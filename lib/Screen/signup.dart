@@ -5,11 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../theme/pawstay_theme.dart';
+import '../config/api_config.dart';
 import 'verify_otp.dart';
 import 'login.dart';
-
-// ── Backend base URL
-const String _kBackendUrl = 'http://10.0.2.2:8000';
 
 // ── Indian States list (for autocomplete)
 const List<String> _kIndianStates = [
@@ -41,7 +39,6 @@ const List<String> _kIndianStates = [
   'Uttar Pradesh',
   'Uttarakhand',
   'West Bengal',
-  'Andaman and Nicobar Islands',
   'Chandigarh',
   'Dadra and Nagar Haveli',
   'Daman and Diu',
@@ -182,49 +179,16 @@ const Map<String, List<String>> _kStateCityMap = {
   'Odisha': ['Bhubaneswar', 'Cuttack', 'Rourkela', 'Berhampur', 'Sambalpur'],
 };
 
-// ── Fallback popular cities per state
+// ── Popular cities (fallback when state is not selected)
 const List<String> _kPopularCities = [
   'Mumbai',
   'Delhi',
   'Bangalore',
   'Hyderabad',
-  'Ahmedabad',
   'Chennai',
   'Kolkata',
   'Pune',
-  'Jaipur',
-  'Surat',
-  'Lucknow',
-  'Kanpur',
-  'Nagpur',
-  'Indore',
-  'Thane',
-  'Bhopal',
-  'Visakhapatnam',
-  'Patna',
-  'Vadodara',
-  'Ghaziabad',
-  'Ludhiana',
-  'Agra',
-  'Nashik',
-  'Faridabad',
-  'Meerut',
-  'Rajkot',
-  'Varanasi',
-  'Srinagar',
-  'Aurangabad',
-  'Dhanbad',
-  'Amritsar',
-  'Allahabad',
-  'Ranchi',
-  'Coimbatore',
-  'Vijayawada',
-  'Jodhpur',
-  'Madurai',
-  'Raipur',
-  'Kota',
-  'Guwahati',
-  'Chandigarh',
+  'Ahmedabad',
 ];
 
 class SignupScreen extends StatefulWidget {
@@ -254,6 +218,63 @@ class _SignupScreenState extends State<SignupScreen>
 
   bool _isLoading = false;
 
+  // ── Ultra-Fast Username Availability Check State
+  bool?
+  _usernameAvailable; // null = untouched/cleared, true = available, false = taken
+  bool _checkingUsername = false;
+  Timer? _usernameDebounce;
+  http.Client? _usernameHttpClient;
+
+  void _onUsernameChanged(String value) {
+    _usernameDebounce?.cancel();
+    _usernameHttpClient?.close();
+    _usernameHttpClient = null;
+
+    final username = value.trim();
+
+    if (username.length < 3) {
+      setState(() {
+        _usernameAvailable = null;
+        _checkingUsername = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _checkingUsername = true;
+      _usernameAvailable = null;
+    });
+
+    // 150ms debounce for near-instant typing feedback
+    _usernameDebounce = Timer(const Duration(milliseconds: 150), () async {
+      _usernameHttpClient = http.Client();
+      try {
+        final uri = Uri.parse(
+          '${ApiConfig.baseUrl}/check-username?username=${Uri.encodeComponent(username)}',
+        );
+        final res = await _usernameHttpClient!
+            .get(uri)
+            .timeout(const Duration(seconds: 4));
+
+        if (!mounted) return;
+
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          setState(() {
+            _usernameAvailable = data['success'] == true;
+            _checkingUsername = false;
+          });
+        } else {
+          setState(() => _checkingUsername = false);
+        }
+      } catch (e) {
+        if (mounted && _checkingUsername) {
+          setState(() => _checkingUsername = false);
+        }
+      }
+    });
+  }
+
   // Button bounce controller
   late AnimationController _buttonCtrl;
 
@@ -280,6 +301,8 @@ class _SignupScreenState extends State<SignupScreen>
     _cityCtr.dispose();
     _postalCtr.dispose();
     _buttonCtrl.dispose();
+    _usernameDebounce?.cancel();
+    _usernameHttpClient?.close();
     super.dispose();
   }
 
@@ -291,11 +314,34 @@ class _SignupScreenState extends State<SignupScreen>
     return _kPopularCities;
   }
 
+  TextStyle _inputStyle() {
+    return GoogleFonts.plusJakartaSans(
+      fontSize: 16,
+      color: PawStayTheme.onSurface,
+    );
+  }
+
+  Widget _label(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: PawStayTheme.onSurface,
+      ),
+    );
+  }
+
   // ── API call ─────────────────────────────────────────────────────────────
   Future<void> _onSignupPressed() async {
     _buttonCtrl.reverse().then((_) => _buttonCtrl.forward());
 
     if (!_formKey.currentState!.validate()) return;
+
+    if (_usernameAvailable == false) {
+      _showError('Username is already taken. Please choose another.');
+      return;
+    }
 
     if (_passwordCtr.text != _confirmPasswordCtr.text) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -321,29 +367,18 @@ class _SignupScreenState extends State<SignupScreen>
         'role': _selectedRole,
       });
 
-      http.Response response;
-      try {
-        response = await http
-            .post(
-              Uri.parse('http://127.0.0.1:8000/signup'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 4));
-      } catch (_) {
-        response = await http
-            .post(
-              Uri.parse('http://10.0.2.2:8000/signup'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 8));
-      }
+      final response = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/signup'),
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        // Navigate to OTP screen, pass all registration data for passing back on verify
+        // Navigate to OTP screen
         Navigator.push(
           context,
           PageRouteBuilder(
@@ -406,9 +441,9 @@ class _SignupScreenState extends State<SignupScreen>
       },
       onSelected: (selection) {
         controller.text = selection;
+        setState(() {}); // trigger rebuild so city suggestions update for state
       },
       fieldViewBuilder: (ctx, fieldCtrl, focusNode, onSubmitted) {
-        // Sync external controller ↔ internal controller
         fieldCtrl.text = controller.text;
         fieldCtrl.addListener(() {
           if (controller.text != fieldCtrl.text) {
@@ -581,11 +616,48 @@ class _SignupScreenState extends State<SignupScreen>
                             TextFormField(
                               controller: _usernameCtr,
                               style: _inputStyle(),
-                              decoration: const InputDecoration(
+                              onChanged: _onUsernameChanged,
+                              decoration: InputDecoration(
                                 hintText: 'janedoe123',
-                                prefixIcon: Icon(
+                                prefixIcon: const Icon(
                                   Icons.alternate_email,
                                   color: PawStayTheme.outlineVariant,
+                                ),
+                                suffixIcon: _checkingUsername
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation(
+                                              PawStayTheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : _usernameAvailable == true
+                                    ? const Icon(
+                                        Icons.check_circle_rounded,
+                                        color: Color(0xFF4CAF50),
+                                      )
+                                    : _usernameAvailable == false
+                                    ? const Icon(
+                                        Icons.cancel_rounded,
+                                        color: PawStayTheme.error,
+                                      )
+                                    : null,
+                                helperText: _usernameAvailable == true
+                                    ? 'Username is available ✓'
+                                    : _usernameAvailable == false
+                                    ? 'Username is already taken'
+                                    : null,
+                                helperStyle: TextStyle(
+                                  color: _usernameAvailable == true
+                                      ? const Color(0xFF4CAF50)
+                                      : PawStayTheme.error,
+                                  fontSize: 12,
                                 ),
                               ),
                               validator: (v) {
@@ -594,6 +666,9 @@ class _SignupScreenState extends State<SignupScreen>
                                 }
                                 if (v.trim().length < 3) {
                                   return 'Username must be at least 3 characters';
+                                }
+                                if (_usernameAvailable == false) {
+                                  return 'This username is already taken';
                                 }
                                 return null;
                               },
@@ -629,7 +704,6 @@ class _SignupScreenState extends State<SignupScreen>
                             ),
 
                             const SizedBox(height: 16),
-
 
                             // ── Password ─────────────────────────────────
                             _label('Password'),
@@ -803,47 +877,45 @@ class _SignupScreenState extends State<SignupScreen>
                               ),
                               items: _roles
                                   .map(
-                                    (r) => DropdownMenuItem(
-                                      value: r,
-                                      child: Text(r),
+                                    (role) => DropdownMenuItem(
+                                      value: role,
+                                      child: Text(role),
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (v) {
-                                if (v != null)
-                                  setState(() => _selectedRole = v);
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _selectedRole = val);
+                                }
                               },
                             ),
 
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 28),
 
-                            // ── Sign Up button ────────────────────────────
+                            // ── Submit Button ─────────────────────────────
                             ScaleTransition(
                               scale: _buttonCtrl,
                               child: SizedBox(
                                 width: double.infinity,
+                                height: 52,
                                 child: ElevatedButton(
                                   onPressed: _isLoading
                                       ? null
                                       : _onSignupPressed,
                                   style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
                                     backgroundColor: PawStayTheme.primary,
+                                    foregroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(
-                                        PawStayTheme.radiusDefault,
+                                        100.0,
                                       ),
                                     ),
-                                    shadowColor: PawStayTheme.primary
-                                        .withValues(alpha: 0.3),
-                                    elevation: 4,
+                                    elevation: 0,
                                   ),
                                   child: _isLoading
                                       ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
+                                          width: 24,
+                                          height: 24,
                                           child: CircularProgressIndicator(
                                             strokeWidth: 2.5,
                                             valueColor:
@@ -853,20 +925,19 @@ class _SignupScreenState extends State<SignupScreen>
                                           ),
                                         )
                                       : Text(
-                                          'Sign Up',
+                                          'Create Account',
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
                                 ),
                               ),
                             ),
 
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 20),
 
-                            // ── Switch to Login ───────────────────────────
+                            // ── Already have an account? Login ────────────
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -881,22 +952,13 @@ class _SignupScreenState extends State<SignupScreen>
                                   onTap: () {
                                     Navigator.pushReplacement(
                                       context,
-                                      PageRouteBuilder(
-                                        pageBuilder: (c, a, sa) =>
-                                            const LoginScreen(),
-                                        transitionsBuilder: (c, a, sa, child) =>
-                                            FadeTransition(
-                                              opacity: a,
-                                              child: child,
-                                            ),
-                                        transitionDuration: const Duration(
-                                          milliseconds: 300,
-                                        ),
+                                      MaterialPageRoute(
+                                        builder: (_) => const LoginScreen(),
                                       ),
                                     );
                                   },
                                   child: Text(
-                                    'Log in',
+                                    'Log In',
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,
@@ -919,18 +981,4 @@ class _SignupScreenState extends State<SignupScreen>
       ),
     );
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  Widget _label(String text) => Text(
-    text,
-    style: GoogleFonts.plusJakartaSans(
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
-      color: PawStayTheme.onSurface,
-    ),
-  );
-
-  TextStyle _inputStyle() =>
-      GoogleFonts.plusJakartaSans(fontSize: 16, color: PawStayTheme.onSurface);
 }

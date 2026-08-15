@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
+import '../config/api_config.dart';
 import '../theme/pawstay_theme.dart';
 import 'login.dart';
 
@@ -34,36 +35,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfile();
   }
 
+  static String? _cachedBaseUrl;
+
+  List<String> get _candidateBaseUrls => [
+    if (_cachedBaseUrl != null) _cachedBaseUrl!,
+    ApiConfig.baseUrl,
+    'http://10.0.2.2:8000',
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+  ];
+
   Future<http.Response> _getWithFallback(String path) async {
-    try {
-      return await http
-          .get(Uri.parse('http://127.0.0.1:8000$path'))
-          .timeout(const Duration(seconds: 4));
-    } catch (_) {
-      return await http
-          .get(Uri.parse('http://10.0.2.2:8000$path'))
-          .timeout(const Duration(seconds: 8));
+    Object? lastException;
+    for (final baseUrl in _candidateBaseUrls) {
+      try {
+        final response = await http
+            .get(Uri.parse('$baseUrl$path'))
+            .timeout(const Duration(seconds: 5));
+        _cachedBaseUrl = baseUrl;
+        return response;
+      } catch (e) {
+        lastException = e;
+      }
     }
+    throw lastException ?? Exception('Failed to connect to backend server');
   }
 
   Future<http.Response> _postWithFallback(String path, String body) async {
-    try {
-      return await http
-          .post(
-            Uri.parse('http://127.0.0.1:8000$path'),
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
-          .timeout(const Duration(seconds: 4));
-    } catch (_) {
-      return await http
-          .post(
-            Uri.parse('http://10.0.2.2:8000$path'),
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
-          .timeout(const Duration(seconds: 8));
+    Object? lastException;
+    for (final baseUrl in _candidateBaseUrls) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl$path'),
+              headers: {'Content-Type': 'application/json'},
+              body: body,
+            )
+            .timeout(const Duration(seconds: 10));
+        _cachedBaseUrl = baseUrl;
+        return response;
+      } catch (e) {
+        lastException = e;
+      }
     }
+    throw lastException ?? Exception('Failed to connect to backend server');
   }
 
   void _showSnack(String message, {bool isError = false}) {
@@ -118,7 +133,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final file = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 75,
+        maxWidth: 400,
+        maxHeight: 400,
+        imageQuality: 70,
       );
 
       if (file == null) {
@@ -131,10 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final base64Image = base64Encode(bytes);
       final response = await _postWithFallback(
         '/profile/photo',
-        jsonEncode({
-          'lookup': _normalizedLookup,
-          'profile_image': base64Image,
-        }),
+        jsonEncode({'lookup': _normalizedLookup, 'profile_image': base64Image}),
       );
 
       if (!mounted) {
@@ -143,7 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (response.statusCode == 200) {
         await _loadProfile();
-        _showSnack('Profile photo updated.');
+        _showSnack('Profile photo updated successfully.');
       } else {
         final decoded = jsonDecode(response.body);
         _showSnack(
@@ -151,9 +165,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           isError: true,
         );
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        _showSnack('Could not upload photo.', isError: true);
+        _showSnack('Error uploading photo: ${e.toString()}', isError: true);
       }
     } finally {
       if (mounted) {
@@ -223,7 +237,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       : () async {
                           final password = passwordController.text;
                           if (password.trim().isEmpty) {
-                            _showSnack('Please enter your password.', isError: true);
+                            _showSnack(
+                              'Please enter your password.',
+                              isError: true,
+                            );
                             return;
                           }
 
@@ -261,7 +278,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             }
                           } catch (_) {
                             if (mounted) {
-                              _showSnack('Could not connect to server.', isError: true);
+                              _showSnack(
+                                'Could not connect to server.',
+                                isError: true,
+                              );
                             }
                           } finally {
                             if (mounted) {
@@ -279,7 +299,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         )
                       : const Text('Delete'),
@@ -350,7 +372,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
-    final profileImage = _buildProfileImage(profile?['profile_image']?.toString());
+    final profileImage = _buildProfileImage(
+      profile?['profile_image']?.toString(),
+    );
     final displayName = profile?['full_name']?.toString() ?? 'User';
     final username = profile?['username']?.toString() ?? '@user';
     final email = profile?['email']?.toString() ?? '';
@@ -372,207 +396,210 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : profile == null
-              ? Center(
-                  child: Text(
-                    'Could not load profile.',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: PawStayTheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(PawStayTheme.marginMobile),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Column(
+          ? Center(
+              child: Text(
+                'Could not load profile.',
+                style: GoogleFonts.plusJakartaSans(
+                  color: PawStayTheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(PawStayTheme.marginMobile),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Column(
+                      children: [
+                        Stack(
                           children: [
-                            Stack(
-                              children: [
-                                CircleAvatar(
-                                  radius: 48,
-                                  backgroundColor: PawStayTheme.primaryContainer,
-                                  backgroundImage: profileImage,
-                                  child: profileImage == null
-                                      ? Text(
-                                          displayName.isEmpty
-                                              ? 'U'
-                                              : displayName[0].toUpperCase(),
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.bold,
-                                            color: PawStayTheme.primary,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: InkWell(
-                                    onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
-                                    child: Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: const BoxDecoration(
+                            CircleAvatar(
+                              radius: 48,
+                              backgroundColor: PawStayTheme.primaryContainer,
+                              backgroundImage: profileImage,
+                              child: profileImage == null
+                                  ? Text(
+                                      displayName.isEmpty
+                                          ? 'U'
+                                          : displayName[0].toUpperCase(),
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
                                         color: PawStayTheme.primary,
-                                        shape: BoxShape.circle,
                                       ),
-                                      child: _isUploadingPhoto
-                                          ? const Padding(
-                                              padding: EdgeInsets.all(8),
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<Color>(
+                                    )
+                                  : null,
+                            ),
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: InkWell(
+                                onTap: _isUploadingPhoto
+                                    ? null
+                                    : _pickAndUploadPhoto,
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: const BoxDecoration(
+                                    color: PawStayTheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: _isUploadingPhoto
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(8),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
                                                   Colors.white,
                                                 ),
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.add_a_photo_outlined,
-                                              color: Colors.white,
-                                              size: 18,
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              displayName,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: PawStayTheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '@$username',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 15,
-                                color: PawStayTheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      Text(
-                        'ACCOUNT INFORMATION',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w700,
-                          color: PawStayTheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInfoCard('Full Name', displayName),
-                      const SizedBox(height: 12),
-                      _buildInfoCard('Username', '@$username'),
-                      const SizedBox(height: 12),
-                      _buildInfoCard(
-                        'Email Address',
-                        email,
-                        trailing: Icon(
-                          profile['is_verified'] == true
-                              ? Icons.verified_outlined
-                              : Icons.info_outline,
-                          color: profile['is_verified'] == true
-                              ? PawStayTheme.secondary
-                              : PawStayTheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoCard(
-                        'Role',
-                        profile['role']?.toString() ?? 'User',
-                      ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(
-                                builder: (_) => const LoginScreen(),
-                              ),
-                              (route) => false,
-                            );
-                          },
-                          icon: const Icon(Icons.logout_rounded),
-                          label: Text(
-                            'Log Out',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 36),
-                      Text(
-                        'DANGER ZONE',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w700,
-                          color: PawStayTheme.error,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: PawStayTheme.errorContainer.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
-                          border: Border.all(
-                            color: PawStayTheme.error.withValues(alpha: 0.25),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Delete Account',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: PawStayTheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Once you delete your account, there is no going back. Please be certain.',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: PawStayTheme.onSurfaceVariant,
-                                height: 1.45,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _showDeleteAccountDialog,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: PawStayTheme.error,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(
-                                'Delete Account',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontWeight: FontWeight.bold,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.add_a_photo_outlined,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        Text(
+                          displayName,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: PawStayTheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '@$username',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 15,
+                            color: PawStayTheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 28),
+                  Text(
+                    'ACCOUNT INFORMATION',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      letterSpacing: 1.1,
+                      fontWeight: FontWeight.w700,
+                      color: PawStayTheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoCard('Full Name', displayName),
+                  const SizedBox(height: 12),
+                  _buildInfoCard('Username', '@$username'),
+                  const SizedBox(height: 12),
+                  _buildInfoCard(
+                    'Email Address',
+                    email,
+                    trailing: Icon(
+                      profile['is_verified'] == true
+                          ? Icons.verified_outlined
+                          : Icons.info_outline,
+                      color: profile['is_verified'] == true
+                          ? PawStayTheme.secondary
+                          : PawStayTheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildInfoCard('Role', profile['role']?.toString() ?? 'User'),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      },
+                      icon: const Icon(Icons.logout_rounded),
+                      label: Text(
+                        'Log Out',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+                  Text(
+                    'DANGER ZONE',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      letterSpacing: 1.1,
+                      fontWeight: FontWeight.w700,
+                      color: PawStayTheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: PawStayTheme.errorContainer.withValues(
+                        alpha: 0.35,
+                      ),
+                      borderRadius: BorderRadius.circular(
+                        PawStayTheme.radiusMd,
+                      ),
+                      border: Border.all(
+                        color: PawStayTheme.error.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Delete Account',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: PawStayTheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Once you delete your account, there is no going back. Please be certain.',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: PawStayTheme.onSurfaceVariant,
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _showDeleteAccountDialog,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: PawStayTheme.error,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: Text(
+                            'Delete Account',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }

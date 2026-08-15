@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import '../theme/pawstay_theme.dart';
 import 'login.dart';
 
@@ -63,24 +64,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     try {
       final body = jsonEncode({'email': email, 'phone_number': phone});
-      http.Response res;
-      try {
-        res = await http
-            .post(
-              Uri.parse('http://127.0.0.1:8000/forgot-password'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 4));
-      } catch (_) {
-        res = await http
-            .post(
-              Uri.parse('http://10.0.2.2:8000/forgot-password'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 8));
-      }
+      final res = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/forgot-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
 
       final data = jsonDecode(res.body);
 
@@ -134,24 +124,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         'new_password': newPassword,
       });
 
-      http.Response res;
-      try {
-        res = await http
-            .post(
-              Uri.parse('http://127.0.0.1:8000/reset-password'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 4));
-      } catch (_) {
-        res = await http
-            .post(
-              Uri.parse('http://10.0.2.2:8000/reset-password'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 8));
-      }
+      final res = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/reset-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
 
       final data = jsonDecode(res.body);
 

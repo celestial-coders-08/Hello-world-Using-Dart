@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../theme/pawstay_theme.dart';
+import '../config/api_config.dart';
 import 'signup.dart';
 import 'home.dart';
 import 'verify_otp.dart';
-import 'forgot_password.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -76,24 +76,13 @@ class _LoginScreenState extends State<LoginScreen>
         'password': _passwordController.text,
       });
 
-      http.Response response;
-      try {
-        response = await http
-            .post(
-              Uri.parse('http://127.0.0.1:8000/login'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 4));
-      } catch (_) {
-        response = await http
-            .post(
-              Uri.parse('http://10.0.2.2:8000/login'),
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 8));
-      }
+      final response = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
 
@@ -103,9 +92,8 @@ class _LoginScreenState extends State<LoginScreen>
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => HomeScreen(
-              userLookup: _emailController.text.trim(),
-            ),
+            builder: (context) =>
+                HomeScreen(userLookup: _emailController.text.trim()),
           ),
         );
       } else {

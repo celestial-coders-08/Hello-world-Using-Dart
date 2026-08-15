@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import '../theme/pawstay_theme.dart';
 import 'profile_screen.dart';
+import 'contact_support_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? userLookup;
@@ -17,6 +21,49 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _selectedMarkerName;
   double _zoomScale = 1.0;
   bool _useCurrentLocation = true;
+  String _displayName = 'Pet Parent';
+  bool _isLoadingUser = false;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserProfile();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchUserProfile() async {
+    if (widget.userLookup == null || widget.userLookup!.trim().isEmpty) return;
+
+    setState(() => _isLoadingUser = true);
+
+    try {
+      final url =
+          '${ApiConfig.baseUrl}/profile?lookup=${Uri.encodeQueryComponent(widget.userLookup!.trim())}';
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted &&
+            data['full_name'] != null &&
+            data['full_name'].toString().isNotEmpty) {
+          setState(() {
+            _displayName = data['full_name'].toString().split(' ').first;
+          });
+        }
+      }
+    } catch (_) {
+      // Fallback stays as Pet Parent
+    } finally {
+      if (mounted) setState(() => _isLoadingUser = false);
+    }
+  }
 
   // Nearby service listings for mock map markers
   final List<MapMarkerData> _markers = [
@@ -66,14 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
             color: PawStayTheme.onSurfaceVariant,
           ),
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'How can we help you?',
-                  style: GoogleFonts.plusJakartaSans(color: Colors.white),
-                ),
-                backgroundColor: PawStayTheme.primary,
-              ),
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ContactSupportScreen()),
             );
           },
         ),
@@ -101,7 +143,8 @@ class _HomeScreenState extends State<HomeScreen> {
               size: 28,
             ),
             onPressed: () {
-              if (widget.userLookup == null || widget.userLookup!.trim().isEmpty) {
+              if (widget.userLookup == null ||
+                  widget.userLookup!.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -138,18 +181,33 @@ class _HomeScreenState extends State<HomeScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Good morning, Sarah!',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: isDesktop ? 36 : 28,
-                      fontWeight: FontWeight.bold,
-                      color: PawStayTheme.onSurface,
-                      letterSpacing: -0.8,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        'Good morning, $_displayName!',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: isDesktop ? 36 : 28,
+                          fontWeight: FontWeight.bold,
+                          color: PawStayTheme.onSurface,
+                          letterSpacing: -0.8,
+                        ),
+                      ),
+                      if (_isLoadingUser) ...[
+                        const SizedBox(width: 10),
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: PawStayTheme.primary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'What does Buster need today?',
+                    'What does your pet need today?',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 16,
                       color: PawStayTheme.onSurfaceVariant,
@@ -291,8 +349,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: 'Pet Walking',
                     subtitle: 'Active & happy',
                     icon: Icons.directions_walk_rounded,
-                    backgroundColor: PawStayTheme.secondaryContainer
-                        .withValues(alpha: 0.6),
+                    backgroundColor: PawStayTheme.secondaryContainer.withValues(
+                      alpha: 0.6,
+                    ),
                     iconColor: PawStayTheme.secondary,
                     onTap: () => _showServiceAlert('Schedule dog walkers'),
                   ),
@@ -408,7 +467,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   color: marker.color,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.2),
+                                      color: Colors.black.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       offset: const Offset(0, 4),
                                       blurRadius: 8,
                                     ),
@@ -702,7 +763,10 @@ class _HomeScreenState extends State<HomeScreen> {
           color: PawStayTheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
           boxShadow: PawStayTheme.ambientShadow1,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.0),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.8),
+            width: 1.0,
+          ),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -772,15 +836,130 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showServiceModalSheet(
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: PawStayTheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.15),
+                ),
+                child: Icon(icon, color: color, size: 30),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: PawStayTheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  color: PawStayTheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Booking request sent for $title!',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                          ),
+                        ),
+                        backgroundColor: PawStayTheme.primary,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                  label: Text(
+                    'Book Now',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: PawStayTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  label: Text(
+                    'Close',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showServiceAlert(String serviceName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$serviceName detail panel opened!',
-          style: GoogleFonts.plusJakartaSans(color: Colors.white),
-        ),
-        backgroundColor: PawStayTheme.secondary,
-      ),
+    _showServiceModalSheet(
+      serviceName,
+      'Explore top verified service providers for your pet.',
+      Icons.pets_rounded,
+      PawStayTheme.primary,
     );
   }
 }

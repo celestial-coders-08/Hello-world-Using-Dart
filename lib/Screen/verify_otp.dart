@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/api_config.dart';
 import '../theme/pawstay_theme.dart';
 import 'home.dart';
 
@@ -42,31 +43,21 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
     super.dispose();
   }
 
-  String get _otpCode => _controllers.map((controller) => controller.text).join();
+  String get _otpCode =>
+      _controllers.map((controller) => controller.text).join();
 
   Future<http.Response> _postWithFallback(
     String path,
     String body, {
-    Duration primaryTimeout = const Duration(seconds: 4),
-    Duration fallbackTimeout = const Duration(seconds: 8),
+    Duration primaryTimeout = const Duration(seconds: 10),
   }) async {
-    try {
-      return await http
-          .post(
-            Uri.parse('http://127.0.0.1:8000$path'),
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
-          .timeout(primaryTimeout);
-    } catch (_) {
-      return await http
-          .post(
-            Uri.parse('http://10.0.2.2:8000$path'),
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
-          .timeout(fallbackTimeout);
-    }
+    return await http
+        .post(
+          Uri.parse('${ApiConfig.baseUrl}$path'),
+          headers: {'Content-Type': 'application/json'},
+          body: body,
+        )
+        .timeout(primaryTimeout);
   }
 
   void _showSnack(String message, {bool isError = false}) {
@@ -137,7 +128,10 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
         isError: true,
       );
     } on TimeoutException {
-      _showSnack('Request timed out. Check if the backend is running.', isError: true);
+      _showSnack(
+        'Request timed out. Check if the backend is running.',
+        isError: true,
+      );
     } catch (_) {
       _showSnack('Could not connect to server.', isError: true);
     } finally {
@@ -317,7 +311,9 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                         backgroundColor: PawStayTheme.primary,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
+                          borderRadius: BorderRadius.circular(
+                            PawStayTheme.radiusMd,
+                          ),
                         ),
                       ),
                       child: _isVerifying
@@ -326,7 +322,9 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : Text(

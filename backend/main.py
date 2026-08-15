@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import inspect, text
@@ -36,6 +36,7 @@ from Email_Veriication.otp_service import (
     save_otp,
     verify_otp as _verify_otp,
     send_otp_email,
+    send_support_email,
 )
 
 load_dotenv()
@@ -172,6 +173,11 @@ class DeleteAccountRequest(BaseModel):
     password: str
 
 
+class ContactRequest(BaseModel):
+    full_name: str
+    email: EmailStr
+    message: str
+
 
 class MessageResponse(BaseModel):
     success: bool
@@ -200,11 +206,26 @@ def health_check():
     return {"status": "ok", "service": "PawStay API"}
 
 
+@app.get("/check-username", response_model=MessageResponse, tags=["Auth"])
+def check_username(username: str, db: Session = Depends(get_db)):
+    """
+    Check if a username is available.
+    Returns success=True if the username is free, success=False if taken.
+    """
+    username = username.strip()
+    if len(username) < 3:
+        return MessageResponse(success=False, message="Username must be at least 3 characters.")
+    existing = db.query(User).filter(User.username == username).first()
+    if existing:
+        return MessageResponse(success=False, message="Username is already taken.")
+    return MessageResponse(success=True, message="Username is available.")
+
 
 @app.post("/signup", response_model=MessageResponse, tags=["Auth"])
-def signup(payload: SignupRequest, db: Session = Depends(get_db)):
+def signup(payload: SignupRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
-    Register a new user and send a 4-digit OTP to their email.
+    Register a new user.
+    OTP email is sent in the background so the response returns immediately.
     Returns 409 if email or username is already taken.
     """
     # Check for duplicate email — ORM query, fully parameterized
@@ -244,14 +265,14 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
 
-    # Generate and persist OTP, then email it
+    # Generate and persist OTP, schedule email in the background
     otp_code = generate_otp(4)
     save_otp(db, str(payload.email), otp_code)
-    sent = send_otp_email(str(payload.email), otp_code, payload.full_name)
 
-    if not sent:
-        # Still return success — user can resend; avoids leaking SMTP details
-        print(f"[WARN] OTP email failed for {payload.email}. OTP: {otp_code}")
+    # Send email in background — endpoint returns immediately without waiting for SMTP
+    background_tasks.add_task(
+        send_otp_email, str(payload.email), otp_code, payload.full_name
+    )
 
     return MessageResponse(
         success=True,
@@ -323,6 +344,11 @@ def update_profile_photo(payload: UpdateProfilePhotoRequest, db: Session = Depen
 
 @app.post("/delete-account", response_model=MessageResponse, tags=["Profile"])
 def delete_account(payload: DeleteAccountRequest, db: Session = Depends(get_db)):
+    """
+    Delete a user account permanently.
+    Deletes the user record, their OTP records, and clears their profile image.
+    Returns 404 if user not found, 401 if password is incorrect.
+    """
     user = get_user_by_lookup(db, payload.lookup)
     if not user:
         raise HTTPException(
@@ -336,9 +362,22 @@ def delete_account(payload: DeleteAccountRequest, db: Session = Depends(get_db))
             detail="Incorrect password. Please try again.",
         )
 
-    db.query(OtpCode).filter(OtpCode.email == user.email).delete()
-    db.delete(user)
-    db.commit()
+    try:
+        # Delete OTP records associated with the user's email
+        db.query(OtpCode).filter(OtpCode.email == user.email).delete(synchronize_session=False)
+        db.flush()
+        # Clear profile image reference (removes from database storage)
+        user.profile_image = None
+        # Delete user record
+        db.delete(user)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Delete account error for {user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete account: {str(e)}",
+        )
 
     return MessageResponse(success=True, message="Account deleted successfully.")
 
@@ -465,6 +504,35 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
         message="Password has been successfully reset! You can now log in with your new password.",
     )
 
+
+@app.post("/contact", response_model=MessageResponse, tags=["Support"])
+def contact_support(payload: ContactRequest):
+    """
+    Send a support message directly to the PawStay support inbox.
+    No data is stored in the database — pure email forward.
+    """
+    full_name = payload.full_name.strip()
+    email_str = str(payload.email).strip()
+    message   = payload.message.strip()
+
+    if not full_name or not message:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Full name and message are required.",
+        )
+
+    sent = send_support_email(full_name, email_str, message)
+
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to send your message. Please try again later.",
+        )
+
+    return MessageResponse(
+        success=True,
+        message="Your message has been sent! Our team will get back to you shortly.",
+    )
 
 
 # ---------------------------------------------------------------------------

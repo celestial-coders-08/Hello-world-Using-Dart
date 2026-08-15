@@ -111,7 +111,7 @@ def verify_otp(db: Session, email: str, code: str) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Email sending
+# Email sending — OTP
 # ---------------------------------------------------------------------------
 
 def send_otp_email(to_email: str, otp_code: str, user_name: str = "") -> bool:
@@ -189,4 +189,84 @@ def send_otp_email(to_email: str, otp_code: str, user_name: str = "") -> bool:
         return True
     except Exception as exc:  # pragma: no cover
         print(f"[OTP] Email send failed: {exc}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Email sending — Support contact
+# ---------------------------------------------------------------------------
+
+def send_support_email(full_name: str, from_email: str, message: str) -> bool:
+    """
+    Send a support request to the PawStay support inbox (SMTP_FROM_EMAIL).
+    The message is emailed directly — no data is stored in the database.
+    Returns True on success, False on failure.
+    """
+    subject = f"PawStay Support Request from {full_name}"
+
+    html_body = f"""
+    <html>
+    <body style="margin:0;padding:0;background:#FFF8F4;font-family:'Segoe UI',Arial,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF8F4;padding:40px 0;">
+        <tr>
+          <td align="center">
+            <table width="480" cellpadding="0" cellspacing="0"
+                   style="background:#FFFFFF;border-radius:16px;box-shadow:0 4px 20px rgba(74,68,63,.08);overflow:hidden;">
+              <!-- Header -->
+              <tr>
+                <td style="background:#99462A;padding:28px 36px;">
+                  <h1 style="margin:0;color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:-0.5px;">
+                    🐾 PawStay — Support Request
+                  </h1>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px;">
+                  <p style="margin:0 0 8px;color:#55433D;font-size:14px;font-weight:600;">FROM</p>
+                  <p style="margin:0 0 4px;color:#1F1B17;font-size:16px;font-weight:700;">{full_name}</p>
+                  <p style="margin:0 0 28px;color:#88726C;font-size:14px;">{from_email}</p>
+
+                  <p style="margin:0 0 8px;color:#55433D;font-size:14px;font-weight:600;">MESSAGE</p>
+                  <div style="background:#F6ECE5;border-radius:12px;padding:20px;margin-bottom:28px;">
+                    <p style="margin:0;color:#1F1B17;font-size:15px;line-height:1.7;white-space:pre-wrap;">{message}</p>
+                  </div>
+
+                  <p style="margin:0;color:#88726C;font-size:13px;line-height:1.5;">
+                    Reply directly to <a href="mailto:{from_email}" style="color:#99462A;">{from_email}</a> to respond.
+                  </p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background:#F6ECE5;padding:20px 36px;text-align:center;">
+                  <p style="margin:0;color:#88726C;font-size:12px;">
+                    &copy; 2026 PawStay. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
+    msg["To"]      = SMTP_FROM_EMAIL   # support inbox
+    msg["Reply-To"] = from_email
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM_EMAIL, SMTP_FROM_EMAIL, msg.as_string())
+        return True
+    except Exception as exc:  # pragma: no cover
+        print(f"[SUPPORT] Email send failed: {exc}")
         return False
