@@ -6,3 +6,5 @@ cryptography
 python-dotenv
 pydantic[email]
 email-validator
+jwt
+python-socketio

@@ -314,7 +314,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
                   ),
                   iconColor: PawStayTheme.secondary,
                   title: 'Email us directly',
-                  subtitle: 'support@pawstay.com',
+                  subtitle: 'pawstay.company@gmail.com',
                   onTap: () {},
                 ),
 
@@ -339,7 +339,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
       ),
     );
   }
-
+  
   Widget _buildTextField({
     required TextEditingController controller,
     required String hintText,

@@ -53,3 +53,17 @@ class OtpCode(Base):
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Pet(Base):
+    __tablename__ = "pets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(120), index=True, nullable=False)
+    name = Column(String(100), nullable=False)
+    type = Column(String(50), nullable=False)
+    age = Column(Integer, default=1, nullable=False)
+    dietary_preferences = Column(Text, nullable=True)
+    health_status = Column(Text, nullable=True)
+    profile_image = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

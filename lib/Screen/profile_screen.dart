@@ -39,8 +39,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   List<String> get _candidateBaseUrls => [
     if (_cachedBaseUrl != null) _cachedBaseUrl!,
-    ApiConfig.baseUrl,
-    'http://10.0.2.2:8000',
+    ApiConfig.baseUrl, // real device LAN IP / web
+    'http://${ApiConfig.deviceIp}:8000', // explicit LAN IP fallback
+    'http://10.0.2.2:8000', // emulator loopback
     'http://127.0.0.1:8000',
     'http://localhost:8000',
   ];

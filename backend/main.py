@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from database.db import get_db, engine
-from database.models import Base, User, OtpCode
+from database.models import Base, User, OtpCode, Pet
 from Email_Veriication.otp_service import (
     generate_otp,
     save_otp,
@@ -163,6 +163,17 @@ class ProfileResponse(BaseModel):
     profile_image: str | None = None
 
 
+class ChatCandidateResponse(BaseModel):
+    id: int
+    full_name: str
+    username: str
+    email: str
+    role: str
+    city: str
+    is_verified: bool
+    profile_image: str | None = None
+
+
 class UpdateProfilePhotoRequest(BaseModel):
     lookup: str
     profile_image: str
@@ -182,6 +193,16 @@ class ContactRequest(BaseModel):
 class MessageResponse(BaseModel):
     success: bool
     message: str
+
+
+class PetCreateRequest(BaseModel):
+    user_id: str
+    name: str
+    type: str
+    age: int = 1
+    dietary_preferences: str = ""
+    health_status: str = ""
+    profile_image: str | None = None
 
 
 def get_user_by_lookup(db: Session, lookup: str) -> User | None:
@@ -325,6 +346,76 @@ def get_profile(lookup: str, db: Session = Depends(get_db)):
         is_verified=user.is_verified,
         profile_image=user.profile_image,
     )
+
+
+@app.get("/users/search", response_model=list[ProfileResponse], tags=["Profile"])
+def search_users(q: str = "", db: Session = Depends(get_db)):
+    """
+    Search users globally by name or username. 
+    Only returns users who have the role: Seller, Service provider, or Doctor.
+    """
+    q_str = q.strip()
+    allowed_roles = ["Seller", "Service provider", "Doctor"]
+    
+    query = db.query(User).filter(User.role.in_(allowed_roles))
+    if q_str:
+        query = query.filter(
+            (User.full_name.ilike(f"%{q_str}%")) | 
+            (User.username.ilike(f"%{q_str}%"))
+        )
+        
+    users = query.all()
+    return [
+        ProfileResponse(
+            id=u.id,
+            full_name=u.full_name,
+            username=u.username,
+            email=u.email,
+            role=u.role,
+            is_verified=u.is_verified,
+            profile_image=u.profile_image
+        ) for u in users
+    ]
+
+
+@app.get("/users/chat-candidates", response_model=list[ChatCandidateResponse], tags=["Profile"])
+def get_chat_candidates(user_id: str = "", db: Session = Depends(get_db)):
+    """
+    Get all users who signed up as service providers, buyers, or doctors,
+    filtered based on the user's city only.
+    """
+    user_id_str = user_id.strip()
+    current_user = get_user_by_lookup(db, user_id_str) if user_id_str else None
+    
+    allowed_roles = ["Service provider", "Pet Service", "User", "Buyer", "Doctor", "Seller"]
+    
+    query = db.query(User).filter(User.role.in_(allowed_roles))
+    
+    if current_user and current_user.city:
+        query = query.filter(User.city.ilike(current_user.city.strip()))
+        query = query.filter(User.id != current_user.id)
+    elif current_user:
+        query = query.filter(User.id != current_user.id)
+        
+    candidates = query.all()
+    
+    if not candidates and current_user:
+        candidates = db.query(User).filter(User.role.in_(allowed_roles), User.id != current_user.id).all()
+    elif not candidates and not current_user:
+        candidates = db.query(User).filter(User.role.in_(allowed_roles)).all()
+        
+    return [
+        ChatCandidateResponse(
+            id=u.id,
+            full_name=u.full_name,
+            username=u.username,
+            email=u.email,
+            role=u.role,
+            city=u.city or "",
+            is_verified=u.is_verified,
+            profile_image=u.profile_image
+        ) for u in candidates
+    ]
 
 
 @app.post("/profile/photo", response_model=MessageResponse, tags=["Profile"])
@@ -533,6 +624,65 @@ def contact_support(payload: ContactRequest):
         success=True,
         message="Your message has been sent! Our team will get back to you shortly.",
     )
+
+
+@app.post("/pets", response_model=MessageResponse, status_code=status.HTTP_201_CREATED, tags=["Pets"])
+def create_pet(payload: PetCreateRequest, db: Session = Depends(get_db)):
+    """
+    Save a new pet profile or update if one exists for this user_id.
+    """
+    existing = db.query(Pet).filter(Pet.user_id == payload.user_id).first()
+    
+    if existing:
+        existing.name = payload.name
+        existing.type = payload.type
+        existing.age = payload.age
+        existing.dietary_preferences = payload.dietary_preferences
+        existing.health_status = payload.health_status
+        if payload.profile_image is not None:
+            existing.profile_image = payload.profile_image
+        db.commit()
+        return MessageResponse(success=True, message="Pet profile updated successfully.")
+        
+    new_pet = Pet(
+        user_id=payload.user_id,
+        name=payload.name,
+        type=payload.type,
+        age=payload.age,
+        dietary_preferences=payload.dietary_preferences,
+        health_status=payload.health_status,
+        profile_image=payload.profile_image,
+    )
+    db.add(new_pet)
+    db.commit()
+    
+    return MessageResponse(
+        success=True,
+        message="Pet profile saved successfully."
+    )
+
+
+@app.get("/pets", tags=["Pets"])
+def get_pets(user_id: str, db: Session = Depends(get_db)):
+    """
+    Get all pets for a specific user_id.
+    """
+    if not user_id.strip():
+        return []
+    pets = db.query(Pet).filter(Pet.user_id == user_id.strip()).all()
+    result = []
+    for p in pets:
+        result.append({
+            "id": p.id,
+            "user_id": p.user_id,
+            "name": p.name,
+            "type": p.type,
+            "age": p.age,
+            "dietary_preferences": p.dietary_preferences or "",
+            "health_status": p.health_status or "",
+            "profile_image": p.profile_image or "",
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
