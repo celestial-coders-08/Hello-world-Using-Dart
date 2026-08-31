@@ -13,7 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/pawstay_theme.dart';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const String _mapsApiKey = 'AIzaSyCvV8p3KVeMSYzbdC2ebgmNDB1-gISD4qg';
+const String _mapsApiKey = 'Google_MAP_API';
 
 // Places Nearby Search radius in meters
 const int _searchRadius = 3000;
