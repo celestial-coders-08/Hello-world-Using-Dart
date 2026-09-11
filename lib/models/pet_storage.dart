@@ -77,7 +77,7 @@ class DummyPetStorage implements IPetStorage {
   Future<List<Pet>> getAllPetsByType(String petType) async {
     return [
       Pet(
-        userId: 'dummy${petType}',
+        userId: 'dummy$petType',
         name: 'dummyPet',
         type: petType,
         age: 3,

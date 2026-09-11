@@ -14,30 +14,34 @@ Security notes:
   • Unique username/email enforced at DB column level
   • All secrets loaded from .env
 """
-
 import os
 import sys
 
 # Allow imports from backend root when running `python main.py` directly
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import uuid
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 from database.db import get_db, engine
-from database.models import Base, User, OtpCode, Pet
+from database.models import Base, User, OtpCode, Pet, PasswordResetToken
 from Email_Veriication.otp_service import (
     generate_otp,
     save_otp,
     verify_otp as _verify_otp,
     send_otp_email,
     send_support_email,
+    send_password_reset_email,
 )
+from service_provider.provider_db import get_profile as get_provider_db_profile
 
 load_dotenv()
 
@@ -64,6 +68,18 @@ def ensure_sqlite_schema_compatibility() -> None:
             connection.execute(text("ALTER TABLE users ADD COLUMN phone_number VARCHAR(20)"))
         if "profile_image" not in existing_columns:
             connection.execute(text("ALTER TABLE users ADD COLUMN profile_image TEXT"))
+        if "walking_charge" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN walking_charge INTEGER"))
+        if "daycare_charge" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN daycare_charge INTEGER"))
+        if "daycare_food_charge" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN daycare_food_charge INTEGER"))
+        if "provider_description" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN provider_description TEXT"))
+
+    # Create password_reset_tokens table if it doesn't exist yet
+    # (SQLAlchemy Base.metadata.create_all handles new tables; this is a safety belt)
+    Base.metadata.create_all(bind=engine)
 
 
 ensure_sqlite_schema_compatibility()
@@ -90,14 +106,15 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 class SignupRequest(BaseModel):
-    full_name:   str
-    username:    str
-    email:       EmailStr
-    password:    str = "Password123"
-    state:       str
-    city:        str
-    postal_code: str
-    role:        str = "User"
+    full_name:    str
+    username:     str
+    email:        EmailStr
+    phone_number: str | None = None
+    password:     str = "Password123"
+    state:        str
+    city:         str
+    postal_code:  str
+    role:         str = "User"
 
     @field_validator("username")
     @classmethod
@@ -143,14 +160,13 @@ class ResendOtpRequest(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email:        EmailStr
-    phone_number: str
+    email: EmailStr
 
 
 class ResetPasswordRequest(BaseModel):
-    email:        EmailStr
-    otp:          str
+    email: EmailStr
     new_password: str
+    confirm_password: str
 
 
 class ProfileResponse(BaseModel):
@@ -174,9 +190,49 @@ class ChatCandidateResponse(BaseModel):
     profile_image: str | None = None
 
 
+class PetWalkingProviderResponse(BaseModel):
+    id: int
+    full_name: str
+    username: str
+    role: str
+    city: str
+    is_verified: bool
+    profile_image: str | None = None
+    distance: str = "Nearby"
+    service: str = "Pet Walker"
+    walking_charge: int | None = None
+    daycare_charge: int | None = None
+    daycare_food_charge: int | None = None
+    provider_description: str | None = None
+    is_online: bool = True
+
+
 class UpdateProfilePhotoRequest(BaseModel):
     lookup: str
     profile_image: str
+
+
+class ProviderProfileRequest(BaseModel):
+    lookup: str
+    walking_charge: int
+    daycare_charge: int
+    daycare_food_charge: int
+    provider_description: str
+
+    @field_validator("walking_charge", "daycare_charge", "daycare_food_charge")
+    @classmethod
+    def charges_must_be_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Charges must be greater than zero.")
+        return value
+
+    @field_validator("provider_description")
+    @classmethod
+    def description_must_not_be_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Description cannot be empty.")
+        return value
 
 
 class DeleteAccountRequest(BaseModel):
@@ -274,6 +330,7 @@ def signup(payload: SignupRequest, background_tasks: BackgroundTasks, db: Sessio
         full_name=payload.full_name,
         username=payload.username,
         email=str(payload.email),
+        phone_number=payload.phone_number,
         state=payload.state,
         city=payload.city,
         postal_code=payload.postal_code,
@@ -348,6 +405,57 @@ def get_profile(lookup: str, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/provider/profile", tags=["Provider"])
+def get_provider_profile(lookup: str, db: Session = Depends(get_db)):
+    user = get_user_by_lookup(db, lookup)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider profile not found.",
+        )
+
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "username": user.username,
+        "email": user.email,
+        "walking_charge": user.walking_charge,
+        "daycare_charge": user.daycare_charge,
+        "daycare_food_charge": user.daycare_food_charge,
+        "provider_description": user.provider_description,
+        "is_complete": all(
+            value is not None
+            for value in (
+                user.walking_charge,
+                user.daycare_charge,
+                user.daycare_food_charge,
+                user.provider_description,
+            )
+        ),
+    }
+
+
+@app.put("/provider/profile", tags=["Provider"])
+def update_provider_profile(
+    payload: ProviderProfileRequest,
+    db: Session = Depends(get_db),
+):
+    user = get_user_by_lookup(db, payload.lookup)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider profile not found.",
+        )
+
+    user.walking_charge = payload.walking_charge
+    user.daycare_charge = payload.daycare_charge
+    user.daycare_food_charge = payload.daycare_food_charge
+    user.provider_description = payload.provider_description
+    db.commit()
+
+    return {"success": True, "message": "Provider profile saved successfully."}
+
+
 @app.get("/users/search", response_model=list[ProfileResponse], tags=["Profile"])
 def search_users(q: str = "", db: Session = Depends(get_db)):
     """
@@ -416,6 +524,68 @@ def get_chat_candidates(user_id: str = "", db: Session = Depends(get_db)):
             profile_image=u.profile_image
         ) for u in candidates
     ]
+
+
+@app.get(
+    "/service-providers/pet-walking",
+    response_model=list[PetWalkingProviderResponse],
+    tags=["Services"],
+)
+def get_pet_walking_providers(user_id: str = "", db: Session = Depends(get_db)):
+    """Return pet-service providers available for pet walking from the database."""
+    current_user = get_user_by_lookup(db, user_id) if user_id.strip() else None
+    
+    # Query users whose role matches service provider roles
+    provider_roles = ["Pet Service", "Service provider", "Walker"]
+
+    query = db.query(User).filter(
+        User.role.in_(provider_roles)
+    )
+
+    if current_user:
+        query = query.filter(User.id != current_user.id)
+
+    providers = query.order_by(User.full_name.asc()).all()
+
+    # Fallback to all users with role 'Service provider' if query is empty
+    if not providers:
+        providers = db.query(User).filter(
+            (User.role.ilike("%Service%")) | (User.role.ilike("%Walker%"))
+        ).all()
+
+    default_services = ["Active Walk", "Professional Sitter", "Weekend Walker", "Active Walk", "Pet Care & Walking"]
+    default_distances = ["2 miles away", "5 miles away", "1.5 miles away", "3 miles away", "4 miles away"]
+
+    result = []
+    for idx, provider in enumerate(providers):
+        provider_profile = get_provider_db_profile(provider.username)
+        if not provider_profile["is_online"]:
+            continue
+
+        service_title = default_services[idx % len(default_services)]
+        distance_str = default_distances[idx % len(default_distances)]
+        
+        result.append(
+            PetWalkingProviderResponse(
+                id=provider.id,
+                full_name=provider.full_name,
+                username=provider.username,
+                role=provider.role,
+                city=provider.city or "",
+                is_verified=provider.is_verified,
+                profile_image=provider.profile_image,
+                distance=distance_str,
+                service=service_title,
+                walking_charge=provider_profile["walking_charge"],
+                daycare_charge=provider_profile["daycare_charge"],
+                daycare_food_charge=provider_profile["daycare_food_charge"],
+                provider_description=provider_profile["provider_description"],
+                is_online=bool(provider_profile["is_online"]),
+            )
+        )
+
+    return result
+
 
 
 @app.post("/profile/photo", response_model=MessageResponse, tags=["Profile"])
@@ -530,38 +700,30 @@ def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/forgot-password", response_model=MessageResponse, tags=["Auth"])
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
-    Request password reset OTP by providing email and phone number.
-    Validates user identity and dispatches OTP code.
+    Send a 4-digit OTP code to the user's email for password reset.
     """
-    email_str = str(payload.email).strip()
-    phone_str = payload.phone_number.strip()
-
+    email_str = str(payload.email).strip().lower()
     user = db.query(User).filter(User.email == email_str).first()
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No account found with this email address.",
         )
 
-    # Validate phone match if registered phone exists
-    if user.phone_number and user.phone_number.strip() != phone_str:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The phone number does not match our records for this account.",
-        )
-
     otp_code = generate_otp(4)
     save_otp(db, email_str, otp_code)
-    sent = send_otp_email(email_str, otp_code, user.full_name)
-
-    if not sent:
-        print(f"[WARN] Forgot Password OTP email failed for {email_str}. OTP: {otp_code}")
+    background_tasks.add_task(send_otp_email, email_str, otp_code, user.full_name)
 
     return MessageResponse(
         success=True,
-        message=f"Password reset verification code sent to {email_str} and {phone_str}.",
+        message=f"An OTP verification code has been sent to {email_str}.",
     )
 
 
@@ -570,13 +732,20 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     """
     Reset user password after OTP verification.
     """
-    email_str = str(payload.email).strip()
-    success, message = _verify_otp(db, email_str, payload.otp)
+    email_str = str(payload.email).strip().lower()
+    new_pwd = payload.new_password.strip()
+    confirm_pwd = payload.confirm_password.strip()
 
-    if not success:
+    if len(new_pwd) < 6:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message,
+            detail="Password must be at least 6 characters long.",
+        )
+
+    if new_pwd != confirm_pwd:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match.",
         )
 
     user = db.query(User).filter(User.email == email_str).first()
@@ -586,14 +755,218 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
             detail="User account not found.",
         )
 
-    user.set_password(payload.new_password)
-    user.is_verified = True  # Ensure account is active after successful password reset
+    user.set_password(new_pwd)
+    user.is_verified = True
     db.commit()
 
     return MessageResponse(
         success=True,
-        message="Password has been successfully reset! You can now log in with your new password.",
+        message="Your password has been successfully reset! You can now log in.",
     )
+
+
+_RESET_PAGE_STYLE = """
+  body{margin:0;padding:0;background:#FFF8F4;font-family:'Segoe UI',Arial,sans-serif;}
+  .card{max-width:460px;margin:60px auto;background:#fff;border-radius:16px;
+        box-shadow:0 4px 24px rgba(74,68,63,.10);overflow:hidden;}
+  .header{background:#99462A;padding:24px 32px;}
+  .header h1{margin:0;color:#fff;font-size:20px;font-weight:700;}  
+  .body{padding:32px;}
+  label{display:block;color:#55433D;font-size:14px;font-weight:600;margin-bottom:6px;}
+  input[type=password]{width:100%;box-sizing:border-box;border:1.5px solid #E0D5CF;
+    border-radius:10px;padding:12px 14px;font-size:15px;color:#1F1B17;
+    background:#FDFAF8;outline:none;margin-bottom:18px;}
+  input[type=password]:focus{border-color:#99462A;}
+  button{width:100%;background:#99462A;color:#fff;border:none;border-radius:10px;
+    padding:14px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:0.3px;}
+  button:hover{background:#7A3520;}
+  .msg-ok{background:#E6F9EE;color:#1A7A42;border-radius:10px;padding:16px 20px;
+    font-size:15px;font-weight:600;text-align:center;margin-top:8px;}
+  .msg-err{background:#FDE8E8;color:#C0392B;border-radius:10px;padding:16px 20px;
+    font-size:15px;font-weight:600;text-align:center;margin-top:8px;}
+  .footer{background:#F6ECE5;padding:14px 32px;text-align:center;
+    color:#88726C;font-size:12px;}
+"""
+
+
+@app.get("/reset-password-page", tags=["Auth"], response_class=None)
+def reset_password_page(token: str = "", db: Session = Depends(get_db)):
+    """
+    Serve an HTML form for the user to enter their new password.
+    Token validity is pre-checked here to show an error early.
+    """
+
+    if not token:
+        html = f"""<html><head><style>{_RESET_PAGE_STYLE}</style></head>
+        <body><div class='card'><div class='header'><h1>🐾 PawStay</h1></div>
+        <div class='body'><div class='msg-err'>Invalid or missing reset link. Please request a new one from the app.</div></div>
+        <div class='footer'>&copy; 2026 PawStay</div></div></body></html>"""
+        return HTMLResponse(content=html, status_code=400)
+
+    record = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == token,
+        PasswordResetToken.is_used == False,  # noqa: E712
+    ).first()
+
+    if not record or datetime.utcnow() > record.expires_at:
+        html = f"""<html><head><style>{_RESET_PAGE_STYLE}</style></head>
+        <body><div class='card'><div class='header'><h1>🐾 PawStay</h1></div>
+        <div class='body'><div class='msg-err'>This reset link has expired or already been used.<br>Please request a new one from the app.</div></div>
+        <div class='footer'>&copy; 2026 PawStay</div></div></body></html>"""
+        return HTMLResponse(content=html, status_code=400)
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reset Password — PawStay</title>
+  <style>{_RESET_PAGE_STYLE}</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header"><h1>🐾 PawStay &mdash; Reset Password</h1></div>
+    <div class="body">
+      <p style="color:#55433D;font-size:15px;margin:0 0 24px;line-height:1.6;">
+        Enter your new password below. It must be at least 6 characters.
+      </p>
+      <form id="resetForm">
+        <label for="np">New Password</label>
+        <input type="password" id="np" name="new_password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" minlength="6" required>
+        <label for="cp">Confirm Password</label>
+        <input type="password" id="cp" name="confirm_password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" minlength="6" required>
+        <button type="submit">Reset Password &rarr;</button>
+      </form>
+      <div id="msg"></div>
+    </div>
+    <div class="footer">&copy; 2026 PawStay. All rights reserved.</div>
+  </div>
+  <script>
+    document.getElementById('resetForm').addEventListener('submit', async function(e) {{
+      e.preventDefault();
+      const np = document.getElementById('np').value;
+      const cp = document.getElementById('cp').value;
+      const msgEl = document.getElementById('msg');
+      if (np.length < 6) {{ msgEl.innerHTML = "<div class='msg-err'>Password must be at least 6 characters.</div>"; return; }}
+      if (np !== cp)     {{ msgEl.innerHTML = "<div class='msg-err'>Passwords do not match.</div>"; return; }}
+      try {{
+        const res = await fetch('/reset-password-web', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{token: '{token}', new_password: np, confirm_password: cp}})
+        }});
+        const data = await res.json();
+        if (res.ok) {{
+          document.getElementById('resetForm').style.display = 'none';
+          msgEl.innerHTML = "<div class='msg-ok'>✅ Password reset successfully!<br>You can now log in to the PawStay app with your new password.</div>";
+        }} else {{
+          msgEl.innerHTML = "<div class='msg-err'>" + (data.detail || 'Something went wrong.') + "</div>";
+        }}
+      }} catch(err) {{
+        msgEl.innerHTML = "<div class='msg-err'>Connection error. Please try again.</div>";
+      }}
+    }});
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@app.post("/reset-password-web", tags=["Auth"])
+async def reset_password_web(
+    request: Request,
+    token: str = Form(None),
+    new_password: str = Form(None),
+    confirm_password: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Validate the reset token and update the password.
+    Supports both HTML form submissions (from email form) and JSON POST requests.
+    """
+    content_type = request.headers.get("content-type", "")
+    is_json = "application/json" in content_type
+
+    if is_json:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        token = (payload.get("token") or "").strip()
+        new_password = (payload.get("new_password") or "").strip()
+        confirm_pwd = (payload.get("confirm_password") or "").strip()
+    else:
+        token = (token or "").strip()
+        new_password = (new_password or "").strip()
+        confirm_pwd = (confirm_password or "").strip()
+
+    def respond_error(msg: str, status_code: int = 400):
+        if is_json:
+            raise HTTPException(status_code=status_code, detail=msg)
+        html = f"""<!DOCTYPE html>
+<html><head><title>Reset Password — PawStay</title><style>{_RESET_PAGE_STYLE}</style></head>
+<body><div class='card'><div class='header'><h1>🐾 PawStay &mdash; Reset Password</h1></div>
+<div class='body'><div class='msg-err'>{msg}</div></div>
+<div class='footer'>&copy; 2026 PawStay. All rights reserved.</div></div></body></html>"""
+        return HTMLResponse(content=html, status_code=status_code)
+
+    if not token:
+        return respond_error("Missing password reset token.", 400)
+    if len(new_password) < 6:
+        return respond_error("Password must be at least 6 characters.", 400)
+    if new_password != confirm_pwd:
+        return respond_error("Passwords do not match.", 400)
+
+    record = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == token,
+        PasswordResetToken.is_used == False,  # noqa: E712
+    ).first()
+
+    if not record:
+        return respond_error("Invalid or already-used reset link/token.", 400)
+
+    if datetime.utcnow() > record.expires_at:
+        record.is_used = True
+        db.commit()
+        return respond_error("This password reset request has expired. Please request a new reset email from the app.", 400)
+
+    user = db.query(User).filter(User.email == record.email).first()
+    if not user:
+        return respond_error("User account not found.", 404)
+
+    user.set_password(new_password)
+    user.is_verified = True  # Ensure account is active
+    record.is_used = True
+    db.commit()
+
+    if is_json:
+        return MessageResponse(
+            success=True,
+            message="Password has been successfully reset! You can now log in with your new password.",
+        )
+
+    success_html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Reset Password — PawStay</title>
+  <style>{_RESET_PAGE_STYLE}</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header"><h1>🐾 PawStay &mdash; Password Reset Success</h1></div>
+    <div class="body">
+      <div class="msg-ok">
+        <div style="font-size:36px;margin-bottom:12px;">✅</div>
+        <strong>Password Reset Successfully!</strong><br><br>
+        Your password has been updated. You can now open the <strong>PawStay</strong> mobile app and log in with your new password.
+      </div>
+    </div>
+    <div class="footer">&copy; 2026 PawStay. All rights reserved.</div>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=success_html)
 
 
 @app.post("/contact", response_model=MessageResponse, tags=["Support"])

@@ -5,9 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 
-import '../config/api_config.dart';
-import '../theme/pawstay_theme.dart';
-import '../models/pet_storage.dart';
+import '../../config/api_config.dart';
+import '../../theme/pawstay_theme.dart';
+import '../../models/pet_storage.dart';
 import 'home.dart';
 
 class AddPetScreen extends StatefulWidget {

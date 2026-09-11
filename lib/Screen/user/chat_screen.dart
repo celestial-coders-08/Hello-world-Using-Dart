@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import '../config/api_config.dart';
-import '../theme/pawstay_theme.dart';
+import '../../config/api_config.dart';
+import '../../theme/pawstay_theme.dart';
 import 'chat_detail_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -43,10 +43,11 @@ class _ChatScreenState extends State<ChatScreen> {
   void _onSearchChanged() async {
     final q = _searchController.text.trim().toLowerCase();
     if (q.isEmpty) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _filtered = List.from(_conversations);
         });
+      }
       return;
     }
 
@@ -262,7 +263,7 @@ class _ChatScreenState extends State<ChatScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.pets, color: PawStayTheme.primary, size: 22),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Text(
               'PawStay',
               style: GoogleFonts.plusJakartaSans(
@@ -439,7 +440,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: _filtered.length,
-                      separatorBuilder: (_, __) => Divider(
+                      separatorBuilder: (_, _) => Divider(
                         height: 1,
                         indent: 78,
                         endIndent: 16,
@@ -484,6 +485,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               } catch (_) {
                                 return;
                               }
+                            }
+                            if (!context.mounted) {
+                              return;
                             }
                             await Navigator.push(
                               context,
@@ -588,7 +592,7 @@ class _ChatScreenState extends State<ChatScreen> {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _candidates.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final c = _candidates[index];
           final String name = c['full_name'] ?? 'User';

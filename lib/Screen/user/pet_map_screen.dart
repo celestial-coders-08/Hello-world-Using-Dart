@@ -10,7 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-import '../theme/pawstay_theme.dart';
+import '../../theme/pawstay_theme.dart';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const String _mapsApiKey = 'AIzaSyCvV8p3KVeMSYzbdC2ebgmNDB1-gISD4qg';
@@ -251,30 +251,308 @@ class _PetMapScreenState extends State<PetMapScreen>
   }
 
   Future<void> _loadPawIcon() async {
+    const int size = 64;
     final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);
-    final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    textPainter.text = TextSpan(
-      text: String.fromCharCode(Icons.pets.codePoint),
-      style: TextStyle(
-        fontSize: 32.0,
-        fontFamily: Icons.pets.fontFamily,
-        color: PawStayTheme.primary,
-      ),
+
+    // Deep blue fill paint matching map UI screenshot
+    final Paint fillPaint = Paint()
+      ..color = const Color(0xFF0F4C81)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    // Draw main pad (metacarpal pad)
+    final Path mainPadPath = Path();
+    mainPadPath.moveTo(size * 0.5, size * 0.48);
+    mainPadPath.cubicTo(
+      size * 0.25,
+      size * 0.48,
+      size * 0.20,
+      size * 0.72,
+      size * 0.35,
+      size * 0.82,
     );
-    textPainter.layout();
-    textPainter.paint(canvas, const Offset(0.0, 0.0));
+    mainPadPath.cubicTo(
+      size * 0.42,
+      size * 0.86,
+      size * 0.58,
+      size * 0.86,
+      size * 0.65,
+      size * 0.82,
+    );
+    mainPadPath.cubicTo(
+      size * 0.80,
+      size * 0.72,
+      size * 0.75,
+      size * 0.48,
+      size * 0.5,
+      size * 0.48,
+    );
+    canvas.drawPath(mainPadPath, fillPaint);
+
+    // Draw 4 toe pads in an arc
+    final List<Offset> toeCenters = [
+      const Offset(size * 0.26, size * 0.42),
+      const Offset(size * 0.40, size * 0.28),
+      const Offset(size * 0.60, size * 0.28),
+      const Offset(size * 0.74, size * 0.42),
+    ];
+    final List<double> toeRadiiX = [
+      size * 0.08,
+      size * 0.085,
+      size * 0.085,
+      size * 0.08,
+    ];
+    final List<double> toeRadiiY = [
+      size * 0.11,
+      size * 0.12,
+      size * 0.12,
+      size * 0.11,
+    ];
+    final List<double> toeAngles = [-0.35, -0.12, 0.12, 0.35];
+
+    for (int i = 0; i < 4; i++) {
+      canvas.save();
+      canvas.translate(toeCenters[i].dx, toeCenters[i].dy);
+      canvas.rotate(toeAngles[i]);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: toeRadiiX[i] * 2,
+          height: toeRadiiY[i] * 2,
+        ),
+        fillPaint,
+      );
+      canvas.restore();
+    }
 
     final ui.Image image = await pictureRecorder.endRecording().toImage(
-      textPainter.width.toInt(),
-      textPainter.height.toInt(),
+      size,
+      size,
     );
     final ByteData? byteData = await image.toByteData(
       format: ui.ImageByteFormat.png,
     );
     if (byteData != null) {
-      _pawIcon = BitmapDescriptor.fromBytes(byteData.buffer.asUint8List());
+      _pawIcon = BitmapDescriptor.bytes(byteData.buffer.asUint8List());
     }
+  }
+
+  /// Calculates bearing (heading angle in degrees) from p1 to p2
+  double _calculateBearing(LatLng p1, LatLng p2) {
+    final lat1 = p1.latitude * math.pi / 180;
+    final lat2 = p2.latitude * math.pi / 180;
+    final dLng = (p2.longitude - p1.longitude) * math.pi / 180;
+
+    final y = math.sin(dLng) * math.cos(lat2);
+    final x =
+        math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
+    final bearing = math.atan2(y, x);
+    return (bearing * 180 / math.pi + 360) % 360;
+  }
+
+  /// Calculates perpendicular lat/lng offset
+  LatLng _offsetLocation(
+    LatLng point,
+    double bearingDegrees,
+    double offsetMeters,
+  ) {
+    const earthRadius = 6378137.0;
+    final d = offsetMeters / earthRadius;
+    final brng = bearingDegrees * math.pi / 180;
+    final lat1 = point.latitude * math.pi / 180;
+    final lon1 = point.longitude * math.pi / 180;
+
+    final lat2 = math.asin(
+      math.sin(lat1) * math.cos(d) +
+          math.cos(lat1) * math.sin(d) * math.cos(brng),
+    );
+    final lon2 =
+        lon1 +
+        math.atan2(
+          math.sin(brng) * math.sin(d) * math.cos(lat1),
+          math.cos(d) - math.sin(lat1) * math.sin(lat2),
+        );
+
+    return LatLng(lat2 * 180 / math.pi, lon2 * 180 / math.pi);
+  }
+
+  /// Generates bearing-aligned, left/right alternating paw print markers along points
+  List<Marker> _generatePawMarkers(List<LatLng> points) {
+    if (_pawIcon == null || points.length < 2) return [];
+
+    final List<Marker> pawMarkers = [];
+    const double interval = 25.0; // Place a paw footprint every 25 meters
+    double accumulatedDistance = 0.0;
+    bool isLeftStep = true;
+    int pawIdCounter = 0;
+
+    for (int i = 0; i < points.length - 1; i++) {
+      final p1 = points[i];
+      final p2 = points[i + 1];
+      final segmentDist = _haversineDistance(p1, p2);
+      if (segmentDist <= 0.001) continue;
+
+      final segmentBearing = _calculateBearing(p1, p2);
+
+      while (accumulatedDistance + segmentDist >= interval) {
+        final double distanceOnSegment = interval - accumulatedDistance;
+        final double ratio = distanceOnSegment / segmentDist;
+        final double lat = p1.latitude + (p2.latitude - p1.latitude) * ratio;
+        final double lng = p1.longitude + (p2.longitude - p1.longitude) * ratio;
+        final centerPos = LatLng(lat, lng);
+
+        final double perpBearing = isLeftStep
+            ? (segmentBearing - 90 + 360) % 360
+            : (segmentBearing + 90) % 360;
+        final offsetPos = _offsetLocation(centerPos, perpBearing, 2.2);
+
+        pawMarkers.add(
+          Marker(
+            markerId: MarkerId('paw_${pawIdCounter++}'),
+            position: offsetPos,
+            icon: _pawIcon!,
+            rotation: segmentBearing,
+            anchor: const Offset(0.5, 0.5),
+            flat: true,
+          ),
+        );
+
+        isLeftStep = !isLeftStep;
+        accumulatedDistance -= interval;
+      }
+      accumulatedDistance += segmentDist;
+    }
+
+    return pawMarkers;
+  }
+
+  /// Dynamically shorten the route polyline and paw footprints as user moves
+  void _shortenPathForUserLocation(LatLng userPos) {
+    if (_routePoints.isEmpty || !_isNavigating || _selectedPlace == null) {
+      return;
+    }
+
+    int closestSegmentIndex = 0;
+    double minDistanceToPolyline = double.infinity;
+
+    for (int i = 0; i < _routePoints.length - 1; i++) {
+      final p1 = _routePoints[i];
+      final p2 = _routePoints[i + 1];
+
+      final segmentLength = _haversineDistance(p1, p2);
+
+      double ratio = 0.0;
+      if (segmentLength > 0.001) {
+        final dot =
+            ((userPos.latitude - p1.latitude) * (p2.latitude - p1.latitude) +
+                (userPos.longitude - p1.longitude) *
+                    (p2.longitude - p1.longitude)) /
+            (math.pow(p2.latitude - p1.latitude, 2) +
+                math.pow(p2.longitude - p1.longitude, 2));
+        ratio = dot.clamp(0.0, 1.0);
+      }
+
+      final projLat = p1.latitude + (p2.latitude - p1.latitude) * ratio;
+      final projLng = p1.longitude + (p2.longitude - p1.longitude) * ratio;
+      final projPos = LatLng(projLat, projLng);
+      final distToProj = _haversineDistance(userPos, projPos);
+
+      if (distToProj < minDistanceToPolyline) {
+        minDistanceToPolyline = distToProj;
+        closestSegmentIndex = i;
+      }
+    }
+
+    // Build shortened route from user position onwards
+    final List<LatLng> shortenedRoute = [userPos];
+    for (int i = closestSegmentIndex + 1; i < _routePoints.length; i++) {
+      shortenedRoute.add(_routePoints[i]);
+    }
+
+    final updatedPaws = _generatePawMarkers(shortenedRoute);
+
+    final remDistM = _haversineDistance(userPos, _selectedPlace!.position);
+    final remDistText = remDistM < 1000
+        ? '${remDistM.toInt()} m'
+        : '${(remDistM / 1000).toStringAsFixed(1)} km';
+    final estMinutes = (remDistM / 80).ceil();
+    final remDurText = estMinutes <= 1 ? '1 min' : '$estMinutes mins';
+
+    setState(() {
+      _routePoints = shortenedRoute;
+      _trailMarkers = updatedPaws;
+      _polylines = {}; // Paw prints only - no solid polyline
+      _remainingDistance = remDistText;
+      _remainingDuration = remDurText;
+    });
+
+    _buildMarkers();
+    _updateNavigationProgress(userPos);
+  }
+
+  /// Simulate walking movement along the route step-by-step for testing/demo
+  void _startMovementSimulation() {
+    if (_routePoints.length < 2 || !_isNavigating) return;
+
+    _routeAnimationTimer?.cancel();
+
+    final List<LatLng> waypoints = [];
+    for (int i = 0; i < _routePoints.length - 1; i++) {
+      final p1 = _routePoints[i];
+      final p2 = _routePoints[i + 1];
+      final dist = _haversineDistance(p1, p2);
+      final int steps = (dist / 12.0).clamp(3, 25).toInt();
+      for (int s = 0; s < steps; s++) {
+        final ratio = s / steps;
+        waypoints.add(
+          LatLng(
+            p1.latitude + (p2.latitude - p1.latitude) * ratio,
+            p1.longitude + (p2.longitude - p1.longitude) * ratio,
+          ),
+        );
+      }
+    }
+    if (_routePoints.isNotEmpty) waypoints.add(_routePoints.last);
+
+    int currentStep = 0;
+    _routeAnimationTimer = Timer.periodic(const Duration(milliseconds: 450), (
+      timer,
+    ) {
+      if (!mounted || !_isNavigating || currentStep >= waypoints.length) {
+        timer.cancel();
+        if (mounted &&
+            currentStep >= waypoints.length &&
+            _selectedPlace != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Arrived at ${_selectedPlace!.name}! 🐾',
+                style: GoogleFonts.plusJakartaSans(color: Colors.white),
+              ),
+              backgroundColor: PawStayTheme.primary,
+            ),
+          );
+        }
+        return;
+      }
+
+      final pos = waypoints[currentStep];
+      setState(() {
+        _currentPosition = pos;
+      });
+
+      _shortenPathForUserLocation(pos);
+
+      if (_mapController.isCompleted) {
+        _mapController.future.then((ctrl) {
+          ctrl.animateCamera(CameraUpdate.newLatLng(pos));
+        });
+      }
+
+      currentStep++;
+    });
   }
 
   @override
@@ -361,7 +639,8 @@ class _PetMapScreenState extends State<PetMapScreen>
           Geolocator.getPositionStream(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.high,
-              distanceFilter: 10, // update every 10m
+              distanceFilter:
+                  3, // update position every 3 meters for responsive live tracking
             ),
           ).listen((Position position) {
             if (!mounted) return;
@@ -369,11 +648,17 @@ class _PetMapScreenState extends State<PetMapScreen>
             setState(() {
               _currentPosition = newPos;
             });
-            _buildMarkers();
 
-            // While navigating: re-fetch route and update nav step
+            // While navigating: dynamically shorten route & paw footprints based on user location
             if (_isNavigating && _selectedPlace != null) {
-              _updateNavigationProgress(newPos);
+              _shortenPathForUserLocation(newPos);
+              if (_mapController.isCompleted) {
+                _mapController.future.then((ctrl) {
+                  ctrl.animateCamera(CameraUpdate.newLatLng(newPos));
+                });
+              }
+            } else {
+              _buildMarkers();
             }
           });
     } catch (e) {
@@ -613,8 +898,13 @@ class _PetMapScreenState extends State<PetMapScreen>
       '?origin=$origin&destination=$dest&mode=driving&key=$_mapsApiKey',
     );
 
+    List<LatLng> decoded = [];
+    String totalDist = '';
+    String totalDur = '';
+    List<NavStep> parsedSteps = [];
+
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 12));
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -625,11 +915,11 @@ class _PetMapScreenState extends State<PetMapScreen>
 
           // Decode overview polyline
           final points = route['overview_polyline']['points'] as String;
-          final decoded = _decodePolyline(points);
+          decoded = _decodePolyline(points);
 
           // Parse nav steps
           final rawSteps = leg['steps'] as List;
-          _navSteps = rawSteps.map((s) {
+          parsedSteps = rawSteps.map((s) {
             final loc = s['start_location'];
             return NavStep(
               instruction: _stripHtml(s['html_instructions'] as String),
@@ -642,98 +932,93 @@ class _PetMapScreenState extends State<PetMapScreen>
             );
           }).toList();
 
-          final totalDist = leg['distance']['text'] as String;
-          final totalDur = leg['duration']['text'] as String;
-
-          // Generate paw markers along the path
-          final List<Marker> pawMarkers = [];
-          if (_pawIcon != null) {
-            double interval = 60.0; // Place a paw every 60 meters
-            double accumulatedDistance = 0.0;
-
-            for (int i = 0; i < decoded.length - 1; i++) {
-              final p1 = decoded[i];
-              final p2 = decoded[i + 1];
-              final segmentDist = _haversineDistance(p1, p2);
-
-              while (accumulatedDistance + segmentDist >= interval) {
-                double ratio = (interval - accumulatedDistance) / segmentDist;
-                final double lat =
-                    p1.latitude + (p2.latitude - p1.latitude) * ratio;
-                final double lng =
-                    p1.longitude + (p2.longitude - p1.longitude) * ratio;
-                final pos = LatLng(lat, lng);
-
-                pawMarkers.add(
-                  Marker(
-                    markerId: MarkerId('paw_$i\_$ratio'),
-                    position: pos,
-                    icon: _pawIcon!,
-                    anchor: const Offset(0.5, 0.5),
-                  ),
-                );
-
-                accumulatedDistance -= interval;
-              }
-              accumulatedDistance += segmentDist;
-            }
-          }
-
-          setState(() {
-            _routePoints = decoded;
-            _trailMarkers = pawMarkers;
-            _polylines = {
-              Polyline(
-                polylineId: const PolylineId('route'),
-                points: decoded,
-                color: PawStayTheme.primary.withValues(
-                  alpha: 0.3,
-                ), // Make line lighter so paws stand out
-                width: 4,
-                jointType: JointType.round,
-                endCap: Cap.roundCap,
-                startCap: Cap.roundCap,
-              ),
-            };
-            _remainingDistance = totalDist;
-            _remainingDuration = totalDur;
-            _isNavigating = true;
-            _currentNavStep = _navSteps.isNotEmpty ? _navSteps.first : null;
-          });
-
-          // Start paw trail animation
-          _pawStep = 0;
-          _pawTrailController.forward();
-
-          // Fit camera to entire route
-          final controller = await _mapController.future;
-          final bounds = _boundsFromLatLngList([
-            _currentPosition!,
-            destination.position,
-            ...decoded,
-          ]);
-          controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
-        } else {
-          _showNoRouteError();
+          totalDist = leg['distance']['text'] as String;
+          totalDur = leg['duration']['text'] as String;
         }
       }
-    } catch (_) {
-      _showNoRouteError();
-    } finally {
-      if (mounted) setState(() => _isRouting = false);
-      _buildMarkers(); // Re-build to include new paw markers
+    } catch (_) {}
+
+    // Fallback: If Directions API is unauthorized / unavailable / returns error status, generate smooth route waypoints
+    if (decoded.isEmpty) {
+      decoded = _generateFallbackRoute(_currentPosition!, destination.position);
+      final distM = _haversineDistance(_currentPosition!, destination.position);
+      totalDist = distM < 1000
+          ? '${distM.toInt()} m'
+          : '${(distM / 1000).toStringAsFixed(1)} km';
+      final estMinutes = (distM / 80).ceil();
+      totalDur = estMinutes <= 1 ? '1 min' : '$estMinutes mins';
+
+      parsedSteps = [
+        NavStep(
+          instruction: 'Follow paw footprints towards ${destination.name}',
+          distance: totalDist,
+          duration: totalDur,
+          startLocation: _currentPosition!,
+        ),
+        NavStep(
+          instruction: 'Arrive at ${destination.name}',
+          distance: '0 m',
+          duration: '0 min',
+          startLocation: destination.position,
+        ),
+      ];
     }
+
+    // Generate bearing-aligned paw markers along the path (NO solid line)
+    final pawMarkers = _generatePawMarkers(decoded);
+
+    setState(() {
+      _routePoints = decoded;
+      _trailMarkers = pawMarkers;
+      _polylines = {}; // Paw prints only - no solid polyline
+      _remainingDistance = totalDist;
+      _remainingDuration = totalDur;
+      _navSteps = parsedSteps;
+      _isNavigating = true;
+      _currentNavStep = _navSteps.isNotEmpty ? _navSteps.first : null;
+    });
+
+    // Start paw trail animation
+    _pawStep = 0;
+    _pawTrailController.forward();
+
+    // Fit camera to route
+    if (_mapController.isCompleted) {
+      final controller = await _mapController.future;
+      final bounds = _boundsFromLatLngList([
+        _currentPosition!,
+        destination.position,
+        ...decoded,
+      ]);
+      controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+    }
+
+    if (mounted) setState(() => _isRouting = false);
+    _buildMarkers(); // Re-build to render new paw print markers
   }
 
-  void _showNoRouteError() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "No driving route found for this location. Google Maps Directions API couldn't generate a path.",
-        ),
-        backgroundColor: PawStayTheme.error,
-      ),
-    );
+  /// Generates smooth curved fallback route waypoints when Google Directions API is unauthorized/erroring
+  List<LatLng> _generateFallbackRoute(LatLng start, LatLng end) {
+    final List<LatLng> points = [];
+    const int steps = 16;
+    final distM = _haversineDistance(start, end);
+    final bearing = _calculateBearing(start, end);
+    final perpBearing = (bearing + 90) % 360;
+    final maxOffsetMeters = math.min(distM * 0.08, 25.0);
+
+    for (int i = 0; i <= steps; i++) {
+      final ratio = i / steps;
+      final lat = start.latitude + (end.latitude - start.latitude) * ratio;
+      final lng = start.longitude + (end.longitude - start.longitude) * ratio;
+      final basePos = LatLng(lat, lng);
+
+      final offsetFactor = math.sin(ratio * math.pi) * maxOffsetMeters;
+      final curvePos = offsetFactor > 0.1
+          ? _offsetLocation(basePos, perpBearing, offsetFactor)
+          : basePos;
+      points.add(curvePos);
+    }
+    return points;
   }
 
   /// Strip HTML tags from Directions step instructions
@@ -897,20 +1182,6 @@ class _PetMapScreenState extends State<PetMapScreen>
       await _fetchNearbyPlaces(_currentPosition!, catId);
       _buildMarkers();
     }
-  }
-
-  // ─── Search dialog ─────────────────────────────────────────────────────────
-  void _showSearchDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => _SearchDialog(
-        selectedId: _selectedCategoryId,
-        onSelected: (catId) {
-          _onCategoryChanged(catId);
-          Navigator.pop(ctx);
-        },
-      ),
-    );
   }
 
   @override
@@ -1160,6 +1431,7 @@ class _PetMapScreenState extends State<PetMapScreen>
                       destinationName: _selectedPlace?.name ?? '',
                       pawStep: _pawStep,
                       onStop: _stopNavigation,
+                      onSimulateWalk: _startMovementSimulation,
                       onOpenMaps: () {
                         if (_selectedPlace != null) {
                           _openNativeMaps(_selectedPlace!);
@@ -1366,6 +1638,7 @@ class _NavigationBar extends StatelessWidget {
   final String destinationName;
   final int pawStep;
   final VoidCallback onStop;
+  final VoidCallback? onSimulateWalk;
   final VoidCallback onOpenMaps;
 
   const _NavigationBar({
@@ -1375,6 +1648,7 @@ class _NavigationBar extends StatelessWidget {
     required this.destinationName,
     required this.pawStep,
     required this.onStop,
+    this.onSimulateWalk,
     required this.onOpenMaps,
   });
 
@@ -1476,6 +1750,41 @@ class _NavigationBar extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onSimulateWalk != null) ...[
+                GestureDetector(
+                  onTap: onSimulateWalk,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.directions_walk_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Test Move',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
               GestureDetector(
                 onTap: onOpenMaps,
                 child: Container(
@@ -1790,64 +2099,6 @@ class _InfoPill extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─── Search dialog ────────────────────────────────────────────────────────────
-class _SearchDialog extends StatelessWidget {
-  final String selectedId;
-  final ValueChanged<String> onSelected;
-
-  const _SearchDialog({required this.selectedId, required this.onSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Filter by Category',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: PawStayTheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ..._serviceCategories.map((cat) {
-              final isSelected = selectedId == cat.id;
-              return ListTile(
-                leading: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: cat.color.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(cat.icon, color: cat.color, size: 18),
-                ),
-                title: Text(
-                  cat.label,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? cat.color : PawStayTheme.onSurface,
-                  ),
-                ),
-                trailing: isSelected
-                    ? Icon(Icons.check_circle_rounded, color: cat.color)
-                    : null,
-                onTap: () => onSelected(cat.id),
-              );
-            }),
-          ],
-        ),
       ),
     );
   }

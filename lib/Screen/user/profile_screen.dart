@@ -6,9 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
-import '../config/api_config.dart';
-import '../theme/pawstay_theme.dart';
-import 'login.dart';
+import '../../config/api_config.dart';
+import '../../theme/pawstay_theme.dart';
+import '../auth/login.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userLookup;
@@ -38,7 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static String? _cachedBaseUrl;
 
   List<String> get _candidateBaseUrls => [
-    if (_cachedBaseUrl != null) _cachedBaseUrl!,
+    ...[_cachedBaseUrl].whereType<String>(),
     ApiConfig.baseUrl, // real device LAN IP / web
     'http://${ApiConfig.deviceIp}:8000', // explicit LAN IP fallback
     'http://10.0.2.2:8000', // emulator loopback
@@ -256,7 +256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               }),
                             );
 
-                            if (!mounted) {
+                            if (!mounted || !dialogContext.mounted) {
                               return;
                             }
 
@@ -352,7 +352,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          if (trailing != null) trailing,
+          trailing ?? const SizedBox.shrink(),
         ],
       ),
     );

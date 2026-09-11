@@ -6,9 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
-import '../config/api_config.dart';
-import '../theme/pawstay_theme.dart';
-import 'home.dart';
+import '../../config/api_config.dart';
+import '../../theme/pawstay_theme.dart';
+import '../user/home.dart';
 
 class VerifyOtpScreen extends StatefulWidget {
   final String email;

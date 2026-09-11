@@ -2,13 +2,18 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import '../config/api_config.dart';
-import '../theme/pawstay_theme.dart';
+import '../../config/api_config.dart';
+import '../../theme/pawstay_theme.dart';
 import 'profile_screen.dart';
-import 'contact_support_screen.dart';
 import 'add_pet_screen.dart';
 import 'pet_map_screen.dart';
 import 'chat_screen.dart';
+import 'pet_walking_screen.dart';
+
+import 'shop_screen.dart';
+import 'doctor_screen.dart';
+import 'food_screen.dart';
+import '../../widgets/app_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? userLookup;
@@ -23,7 +28,16 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
   String _displayName = 'Pet Parent';
   bool _isLoadingUser = false;
+  String? _userProfileImageBase64;
   final TextEditingController _searchController = TextEditingController();
+
+  /// Returns a greeting based on the current hour.
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   void initState() {
@@ -31,8 +45,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchUserProfile();
     _fetchPets();
   }
-
-  String? _petProfileImageBase64;
 
   @override
   void dispose() {
@@ -53,11 +65,16 @@ class _HomeScreenState extends State<HomeScreen> {
           .timeout(const Duration(seconds: 6));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (mounted &&
-            data['full_name'] != null &&
-            data['full_name'].toString().isNotEmpty) {
+        if (mounted) {
           setState(() {
-            _displayName = data['full_name'].toString().split(' ').first;
+            if (data['full_name'] != null &&
+                data['full_name'].toString().isNotEmpty) {
+              _displayName = data['full_name'].toString().split(' ').first;
+            }
+            final imgStr = data['profile_image']?.toString();
+            if (imgStr != null && imgStr.isNotEmpty) {
+              _userProfileImageBase64 = imgStr;
+            }
           });
         }
       }
@@ -69,27 +86,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchPets() async {
+    // Pet list still fetched for future use; avatar now uses user profile image.
     if (widget.userLookup == null || widget.userLookup!.trim().isEmpty) return;
     try {
       final url =
           '${ApiConfig.baseUrl}/pets?user_id=${Uri.encodeQueryComponent(widget.userLookup!.trim())}';
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 6));
-      if (response.statusCode == 200) {
-        final List<dynamic> pets = jsonDecode(response.body);
-        if (pets.isNotEmpty && mounted) {
-          final pet = pets.first;
-          final imageString = pet['profile_image']?.toString();
-          if (imageString != null && imageString.isNotEmpty) {
-            setState(() {
-              _petProfileImageBase64 = imageString;
-            });
-          }
-        }
-      }
+      await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
     } catch (_) {
-      // Ignore errors for fetching pets silently
+      // Ignore silently
     }
   }
 
@@ -100,25 +104,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: PawStayTheme.background,
-      appBar: _currentNavIndex == 1
+      drawer: AppDrawer(userLookup: widget.userLookup, activeRoute: 'home'),
+      appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
           ? null
           : AppBar(
               backgroundColor: PawStayTheme.surface,
               elevation: 0,
               centerTitle: true,
-              leading: IconButton(
-                icon: const Icon(
-                  Icons.help_outline_rounded,
-                  color: PawStayTheme.onSurfaceVariant,
+              leading: Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(
+                    Icons.menu_rounded,
+                    color: PawStayTheme.onSurfaceVariant,
+                  ),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
                 ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ContactSupportScreen(),
-                    ),
-                  );
-                },
               ),
               title: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -161,15 +161,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         builder: (_) =>
                             ProfileScreen(userLookup: widget.userLookup!),
                       ),
-                    );
+                    ).then((_) => _fetchUserProfile());
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: _petProfileImageBase64 != null
+                    child: _userProfileImageBase64 != null
                         ? CircleAvatar(
                             radius: 20,
                             backgroundImage: MemoryImage(
-                              base64Decode(_petProfileImageBase64!),
+                              base64Decode(_userProfileImageBase64!),
                             ),
                           )
                         : const Icon(
@@ -189,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
             userLookup: widget.userLookup,
             onBackPressed: () => setState(() => _currentNavIndex = 0),
           ),
-          const Center(child: Text('Shop coming soon')),
+          ShopScreen(userLookup: widget.userLookup),
           const Center(child: Text('AI Assistant coming soon')),
         ],
       ),
@@ -245,12 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {
               _currentNavIndex = index;
             });
-            if (index == 2 || index == 3) {
-              // Other tabs (Shop, AI Agent) — coming soon
+            if (index == 3) {
+              // AI Agent — coming soon
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Coming soon: ${['Home', 'Chat', 'Shop', 'AI'][index]}',
+                    'Coming soon: AI Assistant',
                     style: GoogleFonts.plusJakartaSans(color: Colors.white),
                   ),
                   backgroundColor: PawStayTheme.primary,
@@ -281,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   children: [
                     Text(
-                      'Good morning, $_displayName!',
+                      '$_greeting, $_displayName!',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: isDesktop ? 36 : 28,
                         fontWeight: FontWeight.bold,
@@ -433,9 +433,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Buy pet',
                   subtitle: 'Find a friend',
                   icon: Icons.shopping_basket_rounded,
-                  backgroundColor: PawStayTheme.surfaceContainerHighest,
+                  backgroundColor: PawStayTheme.surfaceContainerLow,
                   iconColor: PawStayTheme.onSurfaceVariant,
-                  onTap: () => _showServiceAlert('Adopt or Buy Pet services'),
+                  onTap: () => setState(() => _currentNavIndex = 2),
                 ),
                 _buildBentoItem(
                   title: 'Pet Care',
@@ -456,7 +456,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     alpha: 0.6,
                   ),
                   iconColor: PawStayTheme.secondary,
-                  onTap: () => _showServiceAlert('Schedule dog walkers'),
+                  onTap: () async {
+                    final targetNavIndex = await Navigator.push<int>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            PetWalkingScreen(userLookup: widget.userLookup),
+                      ),
+                    );
+                    if (targetNavIndex != null && mounted) {
+                      setState(() {
+                        _currentNavIndex = targetNavIndex;
+                      });
+                    }
+                  },
                 ),
                 _buildBentoItem(
                   title: 'Doctor',
@@ -464,8 +477,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.medical_services_rounded,
                   backgroundColor: PawStayTheme.errorContainer,
                   iconColor: PawStayTheme.onErrorContainer,
-                  onTap: () =>
-                      _showServiceAlert('Vet clinical services finder'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          DoctorScreen(userLookup: widget.userLookup),
+                    ),
+                  ),
                 ),
                 _buildBentoItem(
                   title: 'Food',
@@ -475,8 +493,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     alpha: 0.25,
                   ),
                   iconColor: PawStayTheme.primary,
-                  onTap: () =>
-                      _showServiceAlert('Find healthy meals and supplies'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FoodScreen(userLookup: widget.userLookup),
+                    ),
+                  ),
                 ),
               ],
             ),

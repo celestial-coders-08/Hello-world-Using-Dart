@@ -22,7 +22,15 @@
       "contact_id": "hello",
       "contact_name": "varad",
       "contact_avatar_url": null,
-      "updated_at": "2026-08-31T17:39:23.843163"
+      "updated_at": "2026-09-11T12:53:46.908383"
+    },
+    {
+      "id": 4,
+      "user_id": "varad7611@gmail.com",
+      "contact_id": "varadG",
+      "contact_name": "Varad Gotkhindikar",
+      "contact_avatar_url": null,
+      "updated_at": "2026-09-11T12:28:19.780861"
     }
   ],
   "messages": [
@@ -154,7 +162,7 @@
       "sender_id": "varad7611@gmail.com",
       "content": "hi",
       "timestamp": "2026-08-28T19:12:59.297189",
-      "is_read": false,
+      "is_read": true,
       "image_url": null
     },
     {
@@ -172,7 +180,88 @@
       "sender_id": "varad7611@gmail.com",
       "content": "Hi",
       "timestamp": "2026-08-31T17:39:23.843163",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 18,
+      "conversation_id": 3,
+      "sender_id": "internshipwerbung@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-09-01T15:21:55.021677",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 19,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-09-02T12:26:45.196254",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 20,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-09-06T09:59:57.338249",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 21,
+      "conversation_id": 3,
+      "sender_id": "internshipwerbung@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-09-09T16:15:34.514212",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 22,
+      "conversation_id": 4,
+      "sender_id": "varad7611@gmail.com",
+      "content": "hi",
+      "timestamp": "2026-09-11T12:28:19.780861",
       "is_read": false,
+      "image_url": null
+    },
+    {
+      "id": 23,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "hi",
+      "timestamp": "2026-09-11T12:30:41.188828",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 24,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "Hello",
+      "timestamp": "2026-09-11T12:49:23.691733",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 25,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "hello my name is varad",
+      "timestamp": "2026-09-11T12:53:25.214641",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 26,
+      "conversation_id": 3,
+      "sender_id": "internshipwerbung@gmail.com",
+      "content": "hello what type of service you need",
+      "timestamp": "2026-09-11T12:53:46.908383",
+      "is_read": true,
       "image_url": null
     }
   ]

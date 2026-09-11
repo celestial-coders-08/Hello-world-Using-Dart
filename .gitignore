@@ -46,6 +46,7 @@ app.*.map.json
 
 .env
 pawstay.db
+backend/service_provider/provider.db
 venv/
 build/
 build_old/

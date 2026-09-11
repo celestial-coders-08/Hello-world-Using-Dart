@@ -18,6 +18,10 @@ class User(Base):
     phone_number = Column(String(20), nullable=True)  # Phone number for OTP & account lookup
     profile_image = Column(Text, nullable=True)
     password_hash = Column(String(255), nullable=True)  # Populated during signup/login
+    walking_charge = Column(Integer, nullable=True)
+    daycare_charge = Column(Integer, nullable=True)
+    daycare_food_charge = Column(Integer, nullable=True)
+    provider_description = Column(Text, nullable=True)
 
     state = Column(String(100), nullable=False)
     city = Column(String(100), nullable=False)
@@ -50,6 +54,17 @@ class OtpCode(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(120), index=True, nullable=False)
     code = Column(String(10), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(120), index=True, nullable=False)
+    token = Column(String(64), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

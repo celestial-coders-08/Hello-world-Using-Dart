@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class PawStayTheme {
+  // Theme state notifier
+  static final ValueNotifier<ThemeMode> themeNotifier =
+      ValueNotifier<ThemeMode>(ThemeMode.light);
+
   // Brand Color Palette
   static const Color primary = Color(0xFF99462A); // Terracotta
   static const Color primaryContainer = Color(0xFFD97757);

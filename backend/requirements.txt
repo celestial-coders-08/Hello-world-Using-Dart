@@ -8,3 +8,5 @@ pydantic[email]
 email-validator
 jwt
 python-socketio
+python-multipart
+

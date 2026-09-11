@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../theme/pawstay_theme.dart';
+import '../../theme/pawstay_theme.dart';
 import 'login.dart';
 
 class SplashScreen extends StatefulWidget {

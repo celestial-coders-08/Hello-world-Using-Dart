@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import '../theme/pawstay_theme.dart';
-import '../config/api_config.dart';
+import '../../theme/pawstay_theme.dart';
+import '../../config/api_config.dart';
 import 'signup.dart';
-import 'home.dart';
-import 'verify_otp.dart';
+import '../user/home.dart';
+import '../provider/provider_home.dart';
+import '../user/verify_otp.dart';
+import 'forgot_password.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   // Animation controller for scale-bounce of primary button
   late AnimationController _buttonScaleController;
@@ -89,11 +92,32 @@ class _LoginScreenState extends State<LoginScreen>
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         _showSnack(decoded['message'] ?? 'Login successful!');
+        String? role;
+        final lookup = _emailController.text.trim();
+        final profileResponse = await http
+            .get(
+              Uri.parse(
+                '${ApiConfig.baseUrl}/profile',
+              ).replace(queryParameters: {'lookup': lookup}),
+              headers: {'Accept': 'application/json'},
+            )
+            .timeout(const Duration(seconds: 10));
+
+        if (profileResponse.statusCode == 200) {
+          final profile = jsonDecode(profileResponse.body);
+          role = profile['role']?.toString();
+        }
+        if (!mounted) return;
+
+        final isProvider =
+            role?.trim().toLowerCase() == 'pet service' ||
+            role?.toLowerCase().contains('service provider') == true;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                HomeScreen(userLookup: _emailController.text.trim()),
+            builder: (context) => isProvider
+                ? ProviderDashboardScreen(providerLookup: lookup)
+                : HomeScreen(userLookup: lookup),
           ),
         );
       } else {
@@ -261,12 +285,11 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             validator: (val) {
                               if (val == null || val.trim().isEmpty) {
-                                return 'Please enter your email';
+                                return 'Please enter your email or username';
                               }
-                              if (!RegExp(
-                                r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                              ).hasMatch(val)) {
-                                return 'Please enter a valid email address';
+                              final trimmed = val.trim();
+                              if (trimmed.length < 3) {
+                                return 'Please enter at least 3 characters';
                               }
                               return null;
                             },
@@ -299,15 +322,11 @@ class _LoginScreenState extends State<LoginScreen>
                                       MaterialTapTargetSize.shrinkWrap,
                                 ),
                                 onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Forgot password functionality is coming soon!',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      backgroundColor: PawStayTheme.primary,
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const ForgotPasswordScreen(),
                                     ),
                                   );
                                 },
@@ -325,16 +344,29 @@ class _LoginScreenState extends State<LoginScreen>
                           const SizedBox(height: 6),
                           TextFormField(
                             controller: _passwordController,
-                            obscureText: true,
+                            obscureText: _obscurePassword,
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 16,
                               color: PawStayTheme.onSurface,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText: 'Enter your password',
-                              prefixIcon: Icon(
+                              prefixIcon: const Icon(
                                 Icons.lock_outline_rounded,
                                 color: PawStayTheme.outlineVariant,
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: PawStayTheme.outlineVariant,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
                               ),
                             ),
                             validator: (val) {

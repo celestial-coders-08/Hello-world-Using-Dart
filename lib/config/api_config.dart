@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 class ApiConfig {
   static const int port = 8000;
   static const int messagePort = 8001;
+  static const int providerPort = 8002;
 
   /// ── IMPORTANT ─────────────────────────────────────────────────────────────
   /// Set this to your laptop's local network IP address (e.g. 192.168.1.5).
@@ -16,7 +17,7 @@ class ApiConfig {
   /// This is used when running on a physical Android device via wireless debug.
   /// ──────────────────────────────────────────────────────────────────────────
   static const String deviceIp =
-      '192.168.1.103'; // Your laptop's LAN IP (run `ipconfig` to verify)
+      '192.168.31.63'; // Your laptop's LAN IP (confirmed via ipconfig)
 
   /// Whether we are running on a real physical Android device.
   /// On a physical device, [isAndroid] is true but [10.0.2.2] does NOT work.
@@ -47,5 +48,16 @@ class ApiConfig {
       return 'http://$deviceIp:$messagePort';
     }
     return 'http://127.0.0.1:$messagePort';
+  }
+
+  /// URL for the independent Service Provider API server.
+  static String get providerBaseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:$providerPort';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://$deviceIp:$providerPort';
+    }
+    return 'http://127.0.0.1:$providerPort';
   }
 }

@@ -2,9 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:socket_io_client/socket_io_client.dart' as IO;
-import '../config/api_config.dart';
-import '../theme/pawstay_theme.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
+import '../../config/api_config.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -30,7 +29,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
   bool _isSending = false;
-  IO.Socket? _socket;
+  io.Socket? _socket;
 
   @override
   void initState() {
@@ -50,9 +49,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   void _initSocket() {
     try {
-      _socket = IO.io(
+      _socket = io.io(
         ApiConfig.messageBaseUrl,
-        IO.OptionBuilder()
+        io.OptionBuilder()
             .setTransports(['websocket', 'polling'])
             .disableAutoConnect()
             .build(),
@@ -61,7 +60,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _socket?.connect();
 
       _socket?.onConnect((_) {
-        print('[SOCKET] Connected to message microservice');
+        debugPrint('[SOCKET] Connected to message microservice');
         _socket?.emit('join_room', {'conversation_id': widget.conversationId});
       });
 
@@ -88,7 +87,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         }
       });
     } catch (e) {
-      print('[SOCKET] Socket initialization error: $e');
+      debugPrint('[SOCKET] Socket initialization error: $e');
     }
   }
 
@@ -156,7 +155,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           'content': content,
         });
       } catch (e) {
-        print('[SOCKET] Error emitting message: $e');
+        debugPrint('[SOCKET] Error emitting message: $e');
       }
     } else {
       // Fallback to REST endpoint ONLY if Socket.IO is disconnected
@@ -406,34 +405,49 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return Container(
       color: const Color(0xFFFAF5F0),
       padding: EdgeInsets.fromLTRB(
-        16,
-        10,
-        16,
-        MediaQuery.of(context).padding.bottom + 10,
+        12,
+        8,
+        12,
+        MediaQuery.of(context).padding.bottom + 8,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // ── Pill input field ──────────────────────────────────────
           Expanded(
             child: Container(
-              height: 50,
+              constraints: const BoxConstraints(minHeight: 48),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5EBE6),
-                borderRadius: BorderRadius.circular(26),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Emoji icon
                   IconButton(
                     icon: const Icon(
                       Icons.sentiment_satisfied_alt_rounded,
-                      color: Color(0xFF8D7B74),
-                      size: 22,
+                      color: Color(0xFFBBA8A0),
+                      size: 24,
                     ),
                     onPressed: () {},
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    splashRadius: 20,
                   ),
-                  const SizedBox(width: 10),
+                  // Text field
                   Expanded(
                     child: TextField(
                       controller: _messageController,
@@ -442,12 +456,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         hintStyle: GoogleFonts.plusJakartaSans(
-                          color: const Color(0xFF9E8B83),
+                          color: const Color(0xFFBBA8A0),
                           fontSize: 14.5,
+                          fontWeight: FontWeight.w400,
                         ),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: EdgeInsets.zero,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
                       ),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 14.5,
@@ -455,29 +472,42 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ),
                     ),
                   ),
+                  // Attachment icon
                   IconButton(
                     icon: const Icon(
                       Icons.attach_file_rounded,
-                      color: Color(0xFF8D7B74),
+                      color: Color(0xFFBBA8A0),
                       size: 22,
                     ),
                     onPressed: () {},
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    splashRadius: 20,
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(width: 10),
+          // ── Circular send button ──────────────────────────────────
           GestureDetector(
             onTap: _isSending ? null : _sendMessage,
             child: Container(
               width: 48,
               height: 48,
-              decoration: const BoxDecoration(
-                color: Color(0xFFCA6347), // Terracotta circular button
+              decoration: BoxDecoration(
+                color: const Color(0xFFCA6347),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFCA6347).withValues(alpha: 0.35),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
               child: _isSending
                   ? const Center(
@@ -566,7 +596,7 @@ class _MessageBubble extends StatelessWidget {
                       width: double.infinity,
                       height: 160,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox(),
+                      errorBuilder: (_, _, _) => const SizedBox(),
                     ),
                   ),
                   if (content.isNotEmpty) const SizedBox(height: 8),

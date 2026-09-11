@@ -270,3 +270,100 @@ def send_support_email(full_name: str, from_email: str, message: str) -> bool:
     except Exception as exc:  # pragma: no cover
         print(f"[SUPPORT] Email send failed: {exc}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# Email sending — Password Reset Link
+# ---------------------------------------------------------------------------
+
+def send_password_reset_email(to_email: str, token: str, action_url: str, user_name: str = "") -> bool:
+    """
+    Send a password reset email containing direct password input fields.
+    The email embeds an HTML form with New Password & Confirm Password boxes.
+    Returns True on success, False on failure.
+    """
+    subject = "Reset Your PawStay Password"
+    greeting = f"Hi {user_name}," if user_name else "Hello,"
+
+    html_body = f"""
+    <html>
+    <body style="margin:0;padding:0;background:#FFF8F4;font-family:'Segoe UI',Arial,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF8F4;padding:40px 0;">
+        <tr>
+          <td align="center">
+            <table width="480" cellpadding="0" cellspacing="0"
+                   style="background:#FFFFFF;border-radius:16px;box-shadow:0 4px 20px rgba(74,68,63,.08);overflow:hidden;">
+              <!-- Header -->
+              <tr>
+                <td style="background:#99462A;padding:28px 36px;">
+                  <h1 style="margin:0;color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:-0.5px;">
+                    🐾 PawStay
+                  </h1>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px;">
+                  <p style="margin:0 0 12px;color:#1F1B17;font-size:16px;">{greeting}</p>
+                  <p style="margin:0 0 24px;color:#55433D;font-size:15px;line-height:1.6;">
+                    We received a request to reset your PawStay password.
+                    Please enter your new password below to reset it directly.
+                    This request is valid for <strong>{OTP_EXPIRY_MINUTES} minutes</strong>.
+                  </p>
+                  <!-- Password Reset Form embedded in Email -->
+                  <form action="{action_url}" method="POST" style="margin:0;">
+                    <input type="hidden" name="token" value="{token}">
+                    <div style="margin-bottom:16px;text-align:left;">
+                      <label style="display:block;color:#55433D;font-size:14px;font-weight:600;margin-bottom:6px;">New Password</label>
+                      <input type="password" name="new_password" placeholder="Enter new password" required minlength="6"
+                             style="width:100%;box-sizing:border-radius:10px;border:1.5px solid #E0D5CF;padding:12px 14px;font-size:15px;color:#1F1B17;background:#FDFAF8;outline:none;">
+                    </div>
+                    <div style="margin-bottom:24px;text-align:left;">
+                      <label style="display:block;color:#55433D;font-size:14px;font-weight:600;margin-bottom:6px;">Confirm Password</label>
+                      <input type="password" name="confirm_password" placeholder="Confirm new password" required minlength="6"
+                             style="width:100%;box-sizing:border-radius:10px;border:1.5px solid #E0D5CF;padding:12px 14px;font-size:15px;color:#1F1B17;background:#FDFAF8;outline:none;">
+                    </div>
+                    <button type="submit"
+                            style="width:100%;background:#99462A;color:#FFFFFF;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:0.3px;">
+                      Reset Password &rarr;
+                    </button>
+                  </form>
+                  <p style="margin:24px 0 0;color:#88726C;font-size:13px;line-height:1.5;">
+                    If you did not request a password reset, you can safely ignore this email.
+                    Your password will remain unchanged.
+                  </p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background:#F6ECE5;padding:20px 36px;text-align:center;">
+                  <p style="margin:0;color:#88726C;font-size:12px;">
+                    &copy; 2026 PawStay. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
+    msg["To"]      = to_email
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM_EMAIL, to_email, msg.as_string())
+        return True
+    except Exception as exc:  # pragma: no cover
+        print(f"[RESET] Password reset email failed: {exc}")
+        return False
+
