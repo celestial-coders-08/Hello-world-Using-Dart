@@ -60,6 +60,24 @@ def get_user_aliases(identifier: str) -> set:
     return aliases
 
 
+def get_user_role(identifier: str) -> str | None:
+    if not identifier or not os.path.exists(DB_PATH):
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT role FROM users WHERE username = ? OR email = ? OR id = ?",
+            (identifier, identifier, int(identifier) if identifier.isdigit() else -1),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"[WARN] Failed to query contact role: {e}")
+        return None
+
+
 
 # ---------------------------------------------------------------------------
 # Create SQLite tables on startup
@@ -218,6 +236,9 @@ def list_conversations(user_id: str):
         is_initiator = conv.get("user_id") in my_aliases
         other_user_id = conv.get("contact_id") if is_initiator else conv.get("user_id")
 
+        if my_aliases.intersection(get_user_aliases(other_user_id)):
+            continue
+
         c_name = conv.get("contact_name") if is_initiator else conv.get("user_id")
         c_avatar = conv.get("contact_avatar_url") if is_initiator else None
         c_id = other_user_id
@@ -260,6 +281,14 @@ def create_or_get_conversation(payload: ConversationCreate):
     """
     Find existing conversation or create a new one in chats.json with alias matching
     """
+    allowed_contact_roles = {"pet service", "service provider", "seller"}
+    contact_role = get_user_role(payload.contact_id)
+    if contact_role is None or contact_role.strip().lower() not in allowed_contact_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can contact only service providers and sellers.",
+        )
+
     chats = load_chats_data()
     conversations = chats.get("conversations", [])
 

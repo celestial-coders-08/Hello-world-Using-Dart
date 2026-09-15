@@ -4,10 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
 import '../user/chat_screen.dart';
-import '../user/contact_support_screen.dart';
 import '../user/pet_map_screen.dart';
 import '../user/shop_screen.dart';
 import 'provider_profile_screen.dart';
+import 'slide_bar.dart';
+import 'your_rating.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
   final String? providerLookup;
@@ -21,7 +22,7 @@ class ProviderDashboardScreen extends StatefulWidget {
 
 class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   int _currentNavIndex = 0;
-  String _displayName = 'Alex';
+  String _displayName = 'Service Provider';
   String? _profileImageBase64;
   bool _isProfileComplete = false;
 
@@ -37,7 +38,14 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    PawStayTheme.enterProviderLightMode();
     _checkProfileStatusAndPrompt();
+  }
+
+  @override
+  void dispose() {
+    PawStayTheme.exitProviderLightMode();
+    super.dispose();
   }
 
   Future<void> _checkProfileStatusAndPrompt() async {
@@ -135,9 +143,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: const BorderSide(
-                            color: PawStayTheme.outlineVariant,
-                          ),
+                          side: BorderSide(color: PawStayTheme.outlineVariant),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
                               PawStayTheme.radiusDefault,
@@ -205,158 +211,179 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     }
   }
 
+  void _showRatingSummary() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => YourRatingScreen(providerLookup: widget.providerLookup),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: PawStayTheme.background,
-      appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
-          ? null
-          : AppBar(
-              backgroundColor: PawStayTheme.background,
-              elevation: 0,
-              centerTitle: true,
-              leading: IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: PawStayTheme.outlineVariant,
-                      width: 1.5,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: PawStayTheme.themeNotifier,
+      builder: (context, _, child) => Theme(
+        data: PawStayTheme.providerTheme,
+        child: Scaffold(
+          backgroundColor: PawStayTheme.background,
+          drawer: ProviderSlideBar(
+            providerLookup: widget.providerLookup,
+            activeRoute: _currentNavIndex == 0 ? 'dashboard' : 'chat',
+            displayName: _displayName,
+            profileImage: _profileImageBase64,
+            onRatingTap: _showRatingSummary,
+          ),
+          appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
+              ? null
+              : AppBar(
+                  backgroundColor: PawStayTheme.background,
+                  elevation: 0,
+                  centerTitle: true,
+                  leading: Builder(
+                    builder: (context) => IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: PawStayTheme.outlineVariant,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.menu_rounded,
+                          color: PawStayTheme.onSurface,
+                          size: 18,
+                        ),
+                      ),
+                      onPressed: () => Scaffold.of(context).openDrawer(),
                     ),
                   ),
-                  child: const Icon(
-                    Icons.help_outline_rounded,
-                    color: PawStayTheme.onSurface,
-                    size: 18,
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.pets,
+                        color: PawStayTheme.primary,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'PawStay',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: PawStayTheme.primary,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
                   ),
+                  actions: [
+                    GestureDetector(
+                      onTap: _openProfileScreen,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: PawStayTheme.surfaceContainer,
+                          child: _profileImageBase64 != null
+                              ? ClipOval(
+                                  child: Image.memory(
+                                    base64Decode(_profileImageBase64!),
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.person_outline_rounded,
+                                  color: PawStayTheme.onSurface,
+                                  size: 22,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ContactSupportScreen(),
-                    ),
-                  );
-                },
+          body: IndexedStack(
+            index: _currentNavIndex,
+            children: [
+              _buildDashboardHome(),
+              ChatScreen(
+                userLookup: widget.providerLookup,
+                onBackPressed: () => setState(() => _currentNavIndex = 0),
               ),
-              title: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.pets, color: PawStayTheme.primary, size: 22),
-                  const SizedBox(width: 8),
-                  Text(
-                    'PawStay',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: PawStayTheme.primary,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                GestureDetector(
-                  onTap: _openProfileScreen,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: PawStayTheme.surfaceContainer,
-                      child: _profileImageBase64 != null
-                          ? ClipOval(
-                              child: Image.memory(
-                                base64Decode(_profileImageBase64!),
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.person_outline_rounded,
-                              color: PawStayTheme.onSurface,
-                              size: 22,
-                            ),
-                    ),
-                  ),
+              ShopScreen(userLookup: widget.providerLookup),
+              const Center(child: Text('AI Assistant coming soon')),
+            ],
+          ),
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  offset: const Offset(0, -4),
+                  blurRadius: 16,
                 ),
               ],
             ),
-      body: IndexedStack(
-        index: _currentNavIndex,
-        children: [
-          _buildDashboardHome(),
-          ChatScreen(
-            userLookup: widget.providerLookup,
-            onBackPressed: () => setState(() => _currentNavIndex = 0),
-          ),
-          ShopScreen(userLookup: widget.providerLookup),
-          const Center(child: Text('AI Assistant coming soon')),
-        ],
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              offset: const Offset(0, -4),
-              blurRadius: 16,
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentNavIndex,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: PawStayTheme.primary,
-          unselectedItemColor: PawStayTheme.onSurfaceVariant,
-          selectedLabelStyle: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.bold,
-            fontSize: 11,
-          ),
-          unselectedLabelStyle: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.w500,
-            fontSize: 11,
-          ),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline_rounded),
-              activeIcon: Icon(Icons.chat_bubble_rounded),
-              label: 'Chat',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_bag_outlined),
-              activeIcon: Icon(Icons.shopping_bag_rounded),
-              label: 'Shop',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.smart_toy_outlined),
-              activeIcon: Icon(Icons.smart_toy_rounded),
-              label: 'Chat with AI',
-            ),
-          ],
-          onTap: (index) {
-            setState(() {
-              _currentNavIndex = index;
-            });
-            if (index == 3) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Coming soon: Chat with AI Assistant',
-                    style: GoogleFonts.plusJakartaSans(color: Colors.white),
-                  ),
-                  backgroundColor: PawStayTheme.primary,
-                  duration: const Duration(milliseconds: 900),
+            child: BottomNavigationBar(
+              currentIndex: _currentNavIndex,
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: Colors.white,
+              selectedItemColor: PawStayTheme.primary,
+              unselectedItemColor: PawStayTheme.onSurfaceVariant,
+              selectedLabelStyle: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+              ),
+              unselectedLabelStyle: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w500,
+                fontSize: 11,
+              ),
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  activeIcon: Icon(Icons.home_rounded),
+                  label: 'Home',
                 ),
-              );
-            }
-          },
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.chat_bubble_outline_rounded),
+                  activeIcon: Icon(Icons.chat_bubble_rounded),
+                  label: 'Chat',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.shopping_bag_outlined),
+                  activeIcon: Icon(Icons.shopping_bag_rounded),
+                  label: 'Shop',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.smart_toy_outlined),
+                  activeIcon: Icon(Icons.smart_toy_rounded),
+                  label: 'Chat with AI',
+                ),
+              ],
+              onTap: (index) {
+                setState(() {
+                  _currentNavIndex = index;
+                });
+                if (index == 3) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Coming soon: Chat with AI Assistant',
+                        style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                      ),
+                      backgroundColor: PawStayTheme.primary,
+                      duration: const Duration(milliseconds: 900),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -371,22 +398,144 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Greeting & Subtitle
-          Text(
-            '$_greeting, $_displayName!',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: PawStayTheme.onSurface,
-              letterSpacing: -0.8,
-            ),
+          // Greeting & Subtitle with Edit Profile Button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$_greeting, $_displayName!',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: PawStayTheme.onSurface,
+                        letterSpacing: -0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Service Provider Hub & Schedule',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15,
+                        color: PawStayTheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _openProfileScreen,
+                icon: const Icon(
+                  Icons.edit_rounded,
+                  size: 16,
+                  color: Colors.white,
+                ),
+                label: Text(
+                  'Edit Profile',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: PawStayTheme.primary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  elevation: 1,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Service Provider Hub & Schedule',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 15,
-              color: PawStayTheme.onSurfaceVariant,
+
+          const SizedBox(height: 14),
+
+          // Profile status banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: _isProfileComplete
+                  ? PawStayTheme.secondaryContainer.withValues(alpha: 0.3)
+                  : PawStayTheme.primaryContainer.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
+              border: Border.all(
+                color: _isProfileComplete
+                    ? PawStayTheme.secondary.withValues(alpha: 0.4)
+                    : PawStayTheme.primary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _isProfileComplete
+                      ? Icons.check_circle_rounded
+                      : Icons.info_rounded,
+                  color: _isProfileComplete
+                      ? PawStayTheme.secondary
+                      : PawStayTheme.primary,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isProfileComplete
+                            ? 'Profile Completed & Active'
+                            : 'Complete Your Profile',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: PawStayTheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _isProfileComplete
+                            ? 'Your profile, services, and rates are live for pet owners.'
+                            : 'Add your charges and bio to start accepting client bookings.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: PawStayTheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _openProfileScreen,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    _isProfileComplete ? 'Edit Profile' : 'Complete Now',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _isProfileComplete
+                          ? PawStayTheme.secondary
+                          : PawStayTheme.primary,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -404,7 +553,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.search_rounded,
                   color: PawStayTheme.outlineVariant,
                   size: 22,
@@ -497,8 +646,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 iconBg: const Color(0xFFFFF4E5),
                 iconColor: const Color(0xFFD97706),
                 title: 'Rating',
-                subtitle: '4.9 ★ (180+ reviews)',
-                onTap: _openProfileScreen,
+                subtitle: 'View client reviews',
+                onTap: _showRatingSummary,
               ),
 
               // 2. Analysis
@@ -654,7 +803,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.my_location_rounded,
                           size: 14,
                           color: PawStayTheme.onSurface,
@@ -691,7 +840,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: PawStayTheme.ambientShadow1,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.add,
                             color: PawStayTheme.onSurface,
                             size: 20,
@@ -711,7 +860,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: PawStayTheme.ambientShadow1,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.remove,
                             color: PawStayTheme.onSurface,
                             size: 20,

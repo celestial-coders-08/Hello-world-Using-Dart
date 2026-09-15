@@ -18,7 +18,15 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'PawStay',
           theme: PawStayTheme.lightTheme,
-          darkTheme: ThemeData.dark(useMaterial3: true),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: PawStayTheme.primary,
+              brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF171412),
+          ),
           themeMode: currentMode,
           home: const SplashScreen(),
         );

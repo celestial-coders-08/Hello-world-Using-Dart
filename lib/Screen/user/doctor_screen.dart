@@ -348,7 +348,7 @@ class _DoctorScreenState extends State<DoctorScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: selectedPet,
+                    initialValue: selectedPet,
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -400,10 +400,11 @@ class _DoctorScreenState extends State<DoctorScreen>
                           selected: consultationType == 'In-Clinic Visit',
                           selectedColor: theme.colorScheme.primaryContainer,
                           onSelected: (sel) {
-                            if (sel)
+                            if (sel) {
                               setModalState(
                                 () => consultationType = 'In-Clinic Visit',
                               );
+                            }
                           },
                         ),
                       ),
@@ -421,10 +422,11 @@ class _DoctorScreenState extends State<DoctorScreen>
                           selected: consultationType == 'Video Call',
                           selectedColor: theme.colorScheme.primaryContainer,
                           onSelected: (sel) {
-                            if (sel)
+                            if (sel) {
                               setModalState(
                                 () => consultationType = 'Video Call',
                               );
+                            }
                           },
                         ),
                       ),
@@ -711,7 +713,7 @@ class _DoctorScreenState extends State<DoctorScreen>
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _categories.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final category = _categories[index];
                       final isSelected = _selectedCategory == category;
@@ -776,7 +778,7 @@ class _DoctorScreenState extends State<DoctorScreen>
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: filteredDoctors.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        separatorBuilder: (_, _) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
                           final doc = filteredDoctors[index];
                           return Card(
@@ -982,7 +984,7 @@ class _DoctorScreenState extends State<DoctorScreen>
               : ListView.separated(
                   padding: const EdgeInsets.all(PawStayTheme.marginMobile),
                   itemCount: _myAppointments.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 16),
+                  separatorBuilder: (_, _) => const SizedBox(height: 16),
                   itemBuilder: (context, index) {
                     final appt = _myAppointments[index];
                     return Card(

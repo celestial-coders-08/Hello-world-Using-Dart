@@ -285,7 +285,7 @@ class _FoodScreenState extends State<FoodScreen> {
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: cartItems.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const Divider(height: 16),
                               itemBuilder: (context, index) {
                                 final entry = cartItems[index];
@@ -699,7 +699,7 @@ class _FoodScreenState extends State<FoodScreen> {
                       // Pet type choice
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _calcPetType,
+                          initialValue: _calcPetType,
                           decoration: InputDecoration(
                             labelText: 'Pet Type',
                             contentPadding: const EdgeInsets.symmetric(
@@ -728,7 +728,7 @@ class _FoodScreenState extends State<FoodScreen> {
                       // Activity choice
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _calcActivity,
+                          initialValue: _calcActivity,
                           decoration: InputDecoration(
                             labelText: 'Activity',
                             contentPadding: const EdgeInsets.symmetric(
@@ -840,7 +840,7 @@ class _FoodScreenState extends State<FoodScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _categories.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
                   final cat = _categories[index];
                   final isSel = _selectedCategory == cat;

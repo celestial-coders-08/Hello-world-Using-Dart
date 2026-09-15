@@ -257,10 +257,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         backgroundColor: PawStayTheme.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-            color: PawStayTheme.onSurface,
-          ),
+          icon: Icon(Icons.arrow_back_rounded, color: PawStayTheme.onSurface),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(

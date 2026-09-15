@@ -635,10 +635,7 @@ class _SignupScreenState extends State<SignupScreen>
             fontSize: 16,
             color: PawStayTheme.onSurface,
           ),
-          decoration: InputDecoration(
-            hintText: hint,
-            prefixIcon: Icon(icon, color: PawStayTheme.outlineVariant),
-          ),
+          decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon)),
           validator: validator,
         );
       },
@@ -774,7 +771,7 @@ class _SignupScreenState extends State<SignupScreen>
                             TextFormField(
                               controller: _nameCtr,
                               style: _inputStyle(),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: 'Jane Doe',
                                 prefixIcon: Icon(
                                   Icons.person_outline_rounded,
@@ -797,12 +794,12 @@ class _SignupScreenState extends State<SignupScreen>
                               onChanged: _onUsernameChanged,
                               decoration: InputDecoration(
                                 hintText: 'janedoe123',
-                                prefixIcon: const Icon(
+                                prefixIcon: Icon(
                                   Icons.alternate_email,
                                   color: PawStayTheme.outlineVariant,
                                 ),
                                 suffixIcon: _checkingUsername
-                                    ? const Padding(
+                                    ? Padding(
                                         padding: EdgeInsets.all(12),
                                         child: SizedBox(
                                           width: 18,
@@ -816,7 +813,7 @@ class _SignupScreenState extends State<SignupScreen>
                                         ),
                                       )
                                     : _usernameAvailable == true
-                                    ? const Icon(
+                                    ? Icon(
                                         Icons.check_circle_rounded,
                                         color: Color(0xFF4CAF50),
                                       )
@@ -861,7 +858,7 @@ class _SignupScreenState extends State<SignupScreen>
                               controller: _emailCtr,
                               keyboardType: TextInputType.emailAddress,
                               style: _inputStyle(),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: 'jane@example.com',
                                 prefixIcon: Icon(
                                   Icons.mail_outline_rounded,
@@ -892,7 +889,7 @@ class _SignupScreenState extends State<SignupScreen>
                               style: _inputStyle(),
                               decoration: InputDecoration(
                                 hintText: '••••••••',
-                                prefixIcon: const Icon(
+                                prefixIcon: Icon(
                                   Icons.lock_outline_rounded,
                                   color: PawStayTheme.outlineVariant,
                                 ),
@@ -932,7 +929,7 @@ class _SignupScreenState extends State<SignupScreen>
                               style: _inputStyle(),
                               decoration: InputDecoration(
                                 hintText: '••••••••',
-                                prefixIcon: const Icon(
+                                prefixIcon: Icon(
                                   Icons.lock_outline_rounded,
                                   color: PawStayTheme.outlineVariant,
                                 ),
@@ -1007,7 +1004,7 @@ class _SignupScreenState extends State<SignupScreen>
                                 LengthLimitingTextInputFormatter(10),
                               ],
                               style: _inputStyle(),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: '400001',
                                 prefixIcon: Icon(
                                   Icons.pin_drop_outlined,
@@ -1033,7 +1030,7 @@ class _SignupScreenState extends State<SignupScreen>
                             DropdownButtonFormField<String>(
                               initialValue: _selectedRole,
                               elevation: 2,
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.expand_more,
                                 color: PawStayTheme.onSurfaceVariant,
                               ),
@@ -1043,7 +1040,7 @@ class _SignupScreenState extends State<SignupScreen>
                                 fontSize: 16,
                                 color: PawStayTheme.onSurface,
                               ),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 contentPadding: EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 12,

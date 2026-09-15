@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../theme/pawstay_theme.dart';
 import 'chat_detail_screen.dart';
+import '../../widgets/profile_avatar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? userLookup;
@@ -24,6 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _candidates = [];
   bool _isLoading = true;
   bool _isLoadingCandidates = false;
+  final Map<int, DateTime> _clearedAtByConversation = <int, DateTime>{};
 
   String get _userId => widget.userLookup ?? 'demo_user';
 
@@ -100,8 +103,25 @@ class _ChatScreenState extends State<ChatScreen> {
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as List;
+        final preferences = await SharedPreferences.getInstance();
+        final clearedAt = <int, DateTime>{};
+        for (final conversation in data.cast<Map<String, dynamic>>()) {
+          final conversationId = conversation['id'] as int;
+          final marker = preferences.getString(
+            'cleared_chat_${_userId}_$conversationId',
+          );
+          final parsedMarker = marker == null
+              ? null
+              : DateTime.tryParse(marker);
+          if (parsedMarker != null) {
+            clearedAt[conversationId] = parsedMarker;
+          }
+        }
         if (mounted) {
           setState(() {
+            _clearedAtByConversation
+              ..clear()
+              ..addAll(clearedAt);
             _conversations = data.cast<Map<String, dynamic>>();
             _filtered = List.from(_conversations);
           });
@@ -112,6 +132,15 @@ class _ChatScreenState extends State<ChatScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  bool _isConversationCleared(Map<String, dynamic> conversation) {
+    final clearedAt = _clearedAtByConversation[conversation['id'] as int];
+    if (clearedAt == null) return false;
+    final lastMessage = DateTime.tryParse(
+      conversation['last_message_time'] as String? ?? '',
+    );
+    return lastMessage == null || !lastMessage.isAfter(clearedAt);
   }
 
   Future<void> _fetchCandidates() async {
@@ -250,7 +279,7 @@ class _ChatScreenState extends State<ChatScreen> {
         automaticallyImplyLeading: false,
         leading: widget.onBackPressed != null
             ? IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back_ios_new_rounded,
                   color: PawStayTheme.onSurfaceVariant,
                   size: 20,
@@ -452,6 +481,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         final conv = _filtered[index];
                         return _ConversationTile(
                           conversation: conv,
+                          isCleared: _isConversationCleared(conv),
                           timeLabel: _formatTime(
                             conv['last_message_time'] as String?,
                           ),
@@ -558,7 +588,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.people_outline_rounded,
               size: 64,
               color: PawStayTheme.outlineVariant,
@@ -615,22 +645,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: const Color(0xFFF3EBE4),
-                  backgroundImage: avatar != null && avatar.isNotEmpty
-                      ? NetworkImage(avatar)
-                      : null,
-                  child: avatar == null || avatar.isEmpty
-                      ? Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontWeight: FontWeight.bold,
-                            color: PawStayTheme.primary,
-                          ),
-                        )
-                      : null,
-                ),
+                ProfileAvatar(name: name, imageValue: avatar, radius: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -667,7 +682,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           if (city.isNotEmpty) ...[
                             const SizedBox(width: 6),
-                            const Icon(
+                            Icon(
                               Icons.location_on,
                               size: 12,
                               color: PawStayTheme.onSurfaceVariant,
@@ -724,18 +739,22 @@ class _ConversationTile extends StatelessWidget {
   final String timeLabel;
   final bool isRecent;
   final VoidCallback onTap;
+  final bool isCleared;
 
   const _ConversationTile({
     required this.conversation,
     required this.timeLabel,
     required this.isRecent,
     required this.onTap,
+    required this.isCleared,
   });
 
   @override
   Widget build(BuildContext context) {
     final name = conversation['contact_name'] as String? ?? 'Unknown';
-    final lastMsg = conversation['last_message'] as String? ?? '';
+    final lastMsg = isCleared
+        ? ''
+        : conversation['last_message'] as String? ?? '';
     final unread = (conversation['unread_count'] as int?) ?? 0;
     final avatarUrl = conversation['contact_avatar_url'] as String?;
 
@@ -747,7 +766,7 @@ class _ConversationTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // ── Avatar ──────────────────────────────────────────────
-            _buildAvatar(name, avatarUrl),
+            ProfileAvatar(name: name, imageValue: avatarUrl),
             const SizedBox(width: 14),
 
             // ── Name + preview ───────────────────────────────────────
@@ -828,46 +847,6 @@ class _ConversationTile extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildAvatar(String name, String? url) {
-    if (url != null && url.isNotEmpty) {
-      return CircleAvatar(
-        radius: 28,
-        backgroundImage: NetworkImage(url),
-        backgroundColor: PawStayTheme.primaryContainer,
-      );
-    }
-
-    // Initials avatar
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    // Use a special icon for business-like names (contains & or numbers)
-    final isBusiness =
-        name.contains('&') ||
-        name.contains('Grooming') ||
-        name.contains('Clinic') ||
-        name.contains('Paws');
-
-    return CircleAvatar(
-      radius: 28,
-      backgroundColor: isBusiness
-          ? PawStayTheme.secondaryContainer
-          : PawStayTheme.primaryContainer.withValues(alpha: 0.4),
-      child: isBusiness
-          ? Icon(
-              Icons.storefront_rounded,
-              color: PawStayTheme.primary,
-              size: 26,
-            )
-          : Text(
-              initial,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: PawStayTheme.primary,
-              ),
-            ),
     );
   }
 }

@@ -129,39 +129,154 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
   }
 
   Future<void> _openProvider(PetWalker walker) async {
-    // Show loading indicator briefly while fetching provider pricing
-    final lookup = walker.username.isNotEmpty
-        ? walker.username
-        : walker.fullName;
-
-    Map<String, dynamic>? providerData;
-    try {
-      providerData = await ApiService.fetchProviderProfile(
-        providerLookup: lookup,
-      );
-    } catch (_) {}
-
-    if (!mounted) return;
-
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SitterProfileScreen(
-          walker: walker,
-          userLookup: widget.userLookup,
-          walkingCharge:
-              walker.walkingCharge ?? providerData?['walking_charge'] as int?,
-          daycareCharge:
-              walker.daycareCharge ?? providerData?['daycare_charge'] as int?,
-          daycareFoodCharge:
-              walker.daycareFoodCharge ??
-              providerData?['daycare_food_charge'] as int?,
-          providerDescription:
-              walker.providerDescription ??
-              providerData?['provider_description']?.toString(),
+        builder: (_) =>
+            SitterProfileScreen(walker: walker, userLookup: widget.userLookup),
+      ),
+    );
+  }
+
+  Future<void> _showReviewDialog(PetWalker walker) async {
+    final descriptionController = TextEditingController();
+    final categoryRatings = <String, int>{
+      'Punctuality': 5,
+      'Communication': 5,
+      'Pet Friendliness': 5,
+      'Reliability': 5,
+    };
+    var isSubmitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Review ${walker.fullName}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...categoryRatings.keys.map(
+                (category) => Row(
+                  children: [
+                    Expanded(child: Text(category)),
+                    ...List.generate(
+                      5,
+                      (index) => IconButton(
+                        tooltip: '${index + 1} star${index == 0 ? '' : 's'}',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 36,
+                        ),
+                        onPressed: isSubmitting
+                            ? null
+                            : () => setDialogState(
+                                () => categoryRatings[category] = index + 1,
+                              ),
+                        icon: Icon(
+                          index < categoryRatings[category]!
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          color: const Color(0xFFD97706),
+                          size: 25,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Overall: ${(categoryRatings.values.reduce((a, b) => a + b) / categoryRatings.length).toStringAsFixed(1)} / 5.0',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: descriptionController,
+                enabled: !isSubmitting,
+                maxLines: 4,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Your review',
+                  hintText: 'Tell us about your experience',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final description = descriptionController.text.trim();
+                      if (description.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter a review.'),
+                          ),
+                        );
+                        return;
+                      }
+                      if (widget.userLookup == null ||
+                          widget.userLookup!.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please log in to submit a review.'),
+                          ),
+                        );
+                        return;
+                      }
+                      setDialogState(() => isSubmitting = true);
+                      final rating =
+                          (categoryRatings.values.reduce((a, b) => a + b) /
+                                  categoryRatings.length)
+                              .round();
+                      final result = await ApiService.submitReview({
+                        'provider_lookup': walker.username,
+                        'user_lookup': widget.userLookup!.trim(),
+                        'rating': rating,
+                        'description': description,
+                      });
+                      if (!context.mounted) return;
+                      if (result != null) {
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Review submitted successfully.'),
+                          ),
+                        );
+                      } else {
+                        setDialogState(() => isSubmitting = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Unable to submit review. Please try again.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Submit Review'),
+            ),
+          ],
         ),
       ),
     );
+    descriptionController.dispose();
   }
 
   @override
@@ -175,7 +290,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_rounded,
             color: PawStayTheme.onSurfaceVariant,
           ),
@@ -220,7 +335,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
                         base64Decode(_userProfileImageBase64!),
                       ),
                     )
-                  : const Icon(
+                  : Icon(
                       Icons.account_circle_outlined,
                       color: PawStayTheme.onSurfaceVariant,
                       size: 28,
@@ -418,57 +533,83 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
           onTap: () => _openProvider(walker),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
+            child: Column(
               children: [
-                _buildProfileImage(walker),
+                Row(
+                  children: [
+                    _buildProfileImage(walker),
 
-                const SizedBox(width: 14),
+                    const SizedBox(width: 14),
 
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        walker.fullName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: PawStayTheme.onSurface,
-                        ),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            walker.fullName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: PawStayTheme.onSurface,
+                            ),
+                          ),
+
+                          const SizedBox(height: 3),
+
+                          Text(
+                            walker.email,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: PawStayTheme.onSurfaceVariant,
+                            ),
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          Text(
+                            walker.walkingCharge != null
+                                ? 'Pet Walking: ₹${walker.walkingCharge} / session'
+                                : 'Pet walking price not provided',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: PawStayTheme.primary,
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
 
-                      const SizedBox(height: 4),
+                    const SizedBox(width: 10),
 
-                      Text(
-                        '${walker.distance} • ${walker.serviceLabel}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: PawStayTheme.onSurfaceVariant,
-                        ),
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFFAF0EB),
                       ),
-                    ],
-                  ),
+                      child: const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 22,
+                        color: PawStayTheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
-
-                const SizedBox(width: 10),
-
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFFAF0EB),
-                  ),
-                  child: const Icon(
-                    Icons.chevron_right_rounded,
-                    size: 22,
-                    color: PawStayTheme.primary,
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showReviewDialog(walker),
+                    icon: const Icon(Icons.rate_review_outlined, size: 18),
+                    label: const Text('Get Review'),
                   ),
                 ),
               ],
@@ -507,6 +648,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
 class PetWalker {
   final int id;
   final String fullName;
+  final String email;
   final String username;
   final String role;
   final String city;
@@ -518,10 +660,13 @@ class PetWalker {
   final int? daycareCharge;
   final int? daycareFoodCharge;
   final String? providerDescription;
+  final double averageRating;
+  final int reviewCount;
 
   PetWalker({
     required this.id,
     required this.fullName,
+    required this.email,
     required this.username,
     required this.role,
     required this.city,
@@ -533,13 +678,19 @@ class PetWalker {
     required this.daycareCharge,
     required this.daycareFoodCharge,
     required this.providerDescription,
+    required this.averageRating,
+    required this.reviewCount,
   });
 
   factory PetWalker.fromJson(Map<String, dynamic> json) {
+    final uname = (json['username'] ?? '').toString();
+    final mail = (json['email'] ?? '').toString().trim();
+
     return PetWalker(
       id: _toInt(json['id']),
       fullName: (json['full_name'] ?? 'Pet Walker').toString(),
-      username: (json['username'] ?? '').toString(),
+      email: mail,
+      username: uname,
       role: (json['role'] ?? 'Service provider').toString(),
       city: (json['city'] ?? '').toString(),
       isVerified: json['is_verified'] == true,
@@ -552,6 +703,8 @@ class PetWalker {
       daycareCharge: _toNullableInt(json['daycare_charge']),
       daycareFoodCharge: _toNullableInt(json['daycare_food_charge']),
       providerDescription: json['provider_description']?.toString(),
+      averageRating: (json['average_rating'] as num?)?.toDouble() ?? 0,
+      reviewCount: _toInt(json['review_count']),
     );
   }
 

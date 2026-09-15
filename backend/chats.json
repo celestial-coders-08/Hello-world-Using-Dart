@@ -22,7 +22,7 @@
       "contact_id": "hello",
       "contact_name": "varad",
       "contact_avatar_url": null,
-      "updated_at": "2026-09-11T12:53:46.908383"
+      "updated_at": "2026-09-12T08:57:01.764310"
     },
     {
       "id": 4,
@@ -31,6 +31,14 @@
       "contact_name": "Varad Gotkhindikar",
       "contact_avatar_url": null,
       "updated_at": "2026-09-11T12:28:19.780861"
+    },
+    {
+      "id": 5,
+      "user_id": "varad7611@gmail.com",
+      "contact_id": "bro",
+      "contact_name": "bro",
+      "contact_avatar_url": null,
+      "updated_at": "2026-09-13T11:05:00.413025"
     }
   ],
   "messages": [
@@ -261,6 +269,24 @@
       "sender_id": "internshipwerbung@gmail.com",
       "content": "hello what type of service you need",
       "timestamp": "2026-09-11T12:53:46.908383",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 27,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-09-12T08:53:26.619928",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 28,
+      "conversation_id": 3,
+      "sender_id": "internshipwerbung@gmail.com",
+      "content": "Hi what you want",
+      "timestamp": "2026-09-12T08:57:01.764310",
       "is_read": true,
       "image_url": null
     }

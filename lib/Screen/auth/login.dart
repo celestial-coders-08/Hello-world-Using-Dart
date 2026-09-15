@@ -276,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen>
                               fontSize: 16,
                               color: PawStayTheme.onSurface,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText: 'Enter your email',
                               prefixIcon: Icon(
                                 Icons.mail_outline_rounded,
@@ -351,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             decoration: InputDecoration(
                               hintText: 'Enter your password',
-                              prefixIcon: const Icon(
+                              prefixIcon: Icon(
                                 Icons.lock_outline_rounded,
                                 color: PawStayTheme.outlineVariant,
                               ),

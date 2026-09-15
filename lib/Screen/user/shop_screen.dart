@@ -145,7 +145,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     fontSize: 14,
                     color: PawStayTheme.onSurfaceVariant,
                   ),
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.search,
                     color: PawStayTheme.onSurfaceVariant,
                   ),

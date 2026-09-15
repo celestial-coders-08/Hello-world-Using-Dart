@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/api_config.dart';
+import '../../widgets/profile_avatar.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -30,12 +33,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _isLoading = true;
   bool _isSending = false;
   io.Socket? _socket;
+  DateTime? _clearedAt;
 
   @override
   void initState() {
     super.initState();
-    _fetchMessages();
+    _initializeChat();
     _initSocket();
+  }
+
+  Future<void> _initializeChat() async {
+    await _loadClearMarker();
+    await _fetchMessages();
+  }
+
+  String get _clearMarkerKey =>
+      'cleared_chat_${widget.userId}_${widget.conversationId}';
+
+  Future<void> _loadClearMarker() async {
+    final preferences = await SharedPreferences.getInstance();
+    final value = preferences.getString(_clearMarkerKey);
+    if (!mounted || value == null) return;
+    setState(() => _clearedAt = DateTime.tryParse(value));
   }
 
   @override
@@ -101,7 +120,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body) as List;
         setState(() {
-          _messages = data.cast<Map<String, dynamic>>();
+          _messages = data.cast<Map<String, dynamic>>().where((message) {
+            final timestamp = DateTime.tryParse(
+              message['timestamp'] as String? ?? '',
+            );
+            return _clearedAt == null ||
+                timestamp == null ||
+                timestamp.isAfter(_clearedAt!);
+          }).toList();
         });
         _scrollToBottom();
 
@@ -124,19 +150,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     } catch (_) {}
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage({
+    String? imageUrl,
+    String? documentUrl,
+    String? documentName,
+  }) async {
     final content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty && imageUrl == null && documentUrl == null) return;
 
     _messageController.clear();
     setState(() => _isSending = true);
 
     final nowIso = DateTime.now().toIso8601String();
-    final optimistic = {
+    final optimistic = <String, dynamic>{
       'id': -1,
       'conversation_id': widget.conversationId,
       'sender_id': widget.userId,
       'content': content,
+      'image_url': imageUrl,
+      'document_url': documentUrl,
+      'document_name': documentName,
       'timestamp': nowIso,
       'is_read': false,
     };
@@ -144,16 +177,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     setState(() => _messages.add(optimistic));
     _scrollToBottom();
 
+    final payload = <String, dynamic>{
+      'conversation_id': widget.conversationId,
+      'sender_id': widget.userId,
+      'content': content,
+      if (imageUrl != null) 'image_url': imageUrl,
+      if (documentUrl != null) 'document_url': documentUrl,
+      if (documentName != null) 'document_name': documentName,
+    };
+
     final isSocketConnected = _socket != null && (_socket!.connected == true);
 
     if (isSocketConnected) {
       // Send via real-time Socket.IO ONLY
       try {
-        _socket?.emit('send_message', {
-          'conversation_id': widget.conversationId,
-          'sender_id': widget.userId,
-          'content': content,
-        });
+        _socket?.emit('send_message', payload);
       } catch (e) {
         debugPrint('[SOCKET] Error emitting message: $e');
       }
@@ -166,10 +204,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             .post(
               Uri.parse(url),
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'sender_id': widget.userId,
-                'content': content,
-              }),
+              body: jsonEncode(payload),
             )
             .timeout(const Duration(seconds: 8));
 
@@ -234,27 +269,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                CircleAvatar(
+                ProfileAvatar(
+                  name: widget.contactName,
+                  imageValue: widget.contactAvatarUrl,
                   radius: 20,
-                  backgroundColor: const Color(0xFFF3EBE4),
-                  backgroundImage:
-                      widget.contactAvatarUrl != null &&
-                          widget.contactAvatarUrl!.isNotEmpty
-                      ? NetworkImage(widget.contactAvatarUrl!)
-                      : null,
-                  child:
-                      widget.contactAvatarUrl == null ||
-                          widget.contactAvatarUrl!.isEmpty
-                      ? Text(
-                          widget.contactName.isNotEmpty
-                              ? widget.contactName[0].toUpperCase()
-                              : '?',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFFCA6347),
-                          ),
-                        )
-                      : null,
                 ),
                 Positioned(
                   right: 0,
@@ -305,7 +323,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               color: Color(0xFF2C2420),
               size: 24,
             ),
-            onPressed: () {},
+            onPressed: _showChatMenu,
           ),
           const SizedBox(width: 4),
         ],
@@ -351,9 +369,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       final msg = _messages[index];
                       final isMine = msg['sender_id'] == widget.userId;
                       final imageUrl = msg['image_url'] as String?;
+                      final documentUrl = msg['document_url'] as String?;
+                      final documentName = msg['document_name'] as String?;
                       return _MessageBubble(
                         content: msg['content'] as String? ?? '',
                         imageUrl: imageUrl,
+                        documentUrl: documentUrl,
+                        documentName: documentName,
                         isMine: isMine,
                         time: _formatBubbleTime(msg['timestamp'] as String?),
                       );
@@ -401,6 +423,186 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
+  Future<void> _showChatMenu() async {
+    final shouldClear = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListTile(
+          leading: const Icon(Icons.delete_sweep_outlined),
+          title: const Text('Clear chat'),
+          onTap: () => Navigator.pop(sheetContext, true),
+        ),
+      ),
+    );
+    if (shouldClear != true || !mounted) return;
+
+    final preferences = await SharedPreferences.getInstance();
+    final now = DateTime.now().toUtc();
+    await preferences.setString(_clearMarkerKey, now.toIso8601String());
+    if (!mounted) return;
+    setState(() {
+      _clearedAt = now;
+      _messages.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Chat cleared on this device.')),
+    );
+  }
+
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0D5CE),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Send Attachment',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF2C2420),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Image Option
+                    _buildAttachmentOption(
+                      icon: Icons.image_rounded,
+                      color: const Color(0xFFCA6347),
+                      bgColor: const Color(0xFFFBF0ED),
+                      label: 'Image',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _pickAndSendImage();
+                      },
+                    ),
+                    // Document Option
+                    _buildAttachmentOption(
+                      icon: Icons.insert_drive_file_rounded,
+                      color: const Color(0xFF2B7A78),
+                      bgColor: const Color(0xFFEBF5F5),
+                      label: 'Document',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _pickAndSendDocument();
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAttachmentOption({
+    required IconData icon,
+    required Color color,
+    required Color bgColor,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF2C2420),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAndSendImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        _sendMessage(imageUrl: base64Str);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to pick image: $e')));
+      }
+    }
+  }
+
+  Future<void> _pickAndSendDocument() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      XFile? file;
+      try {
+        file = await picker.pickMedia();
+      } catch (_) {
+        file = await picker.pickImage(source: ImageSource.gallery);
+      }
+      if (file != null) {
+        final bytes = await file.readAsBytes();
+        final base64Str =
+            'data:application/octet-stream;base64,${base64Encode(bytes)}';
+        final name = file.name;
+        final documentName =
+            (name.endsWith('.pdf') ||
+                name.endsWith('.doc') ||
+                name.endsWith('.docx') ||
+                name.endsWith('.txt'))
+            ? name
+            : 'Document_${DateTime.now().millisecondsSinceEpoch}.${name.contains('.') ? name.split('.').last : 'pdf'}';
+        _sendMessage(documentUrl: base64Str, documentName: documentName);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not attach document: $e')),
+        );
+      }
+    }
+  }
+
   Widget _buildInputRow() {
     return Container(
       color: const Color(0xFFFAF5F0),
@@ -428,25 +630,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ],
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Emoji icon
-                  IconButton(
-                    icon: const Icon(
-                      Icons.sentiment_satisfied_alt_rounded,
-                      color: Color(0xFFBBA8A0),
-                      size: 24,
-                    ),
-                    onPressed: () {},
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
-                    ),
-                    splashRadius: 20,
-                  ),
                   // Text field
                   Expanded(
                     child: TextField(
@@ -472,14 +659,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ),
                     ),
                   ),
-                  // Attachment icon
+                  // Attachment icon (opens modal with Image & Document)
                   IconButton(
                     icon: const Icon(
                       Icons.attach_file_rounded,
                       color: Color(0xFFBBA8A0),
                       size: 22,
                     ),
-                    onPressed: () {},
+                    onPressed: _showAttachmentOptions,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                       minWidth: 36,
@@ -494,7 +681,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           const SizedBox(width: 10),
           // ── Circular send button ──────────────────────────────────
           GestureDetector(
-            onTap: _isSending ? null : _sendMessage,
+            onTap: _isSending ? null : () => _sendMessage(),
             child: Container(
               width: 48,
               height: 48,
@@ -539,18 +726,148 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 class _MessageBubble extends StatelessWidget {
   final String content;
   final String? imageUrl;
+  final String? documentUrl;
+  final String? documentName;
   final bool isMine;
   final String time;
 
   const _MessageBubble({
     required this.content,
     this.imageUrl,
+    this.documentUrl,
+    this.documentName,
     required this.isMine,
     required this.time,
   });
 
+  Widget _buildImageWidget(String url) {
+    if (url.startsWith('data:image')) {
+      try {
+        final base64Bytes = base64Decode(url.split(',').last);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(
+            base64Bytes,
+            width: double.infinity,
+            height: 180,
+            fit: BoxFit.cover,
+          ),
+        );
+      } catch (_) {}
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        url,
+        width: double.infinity,
+        height: 180,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          height: 120,
+          color: Colors.black.withValues(alpha: 0.05),
+          child: const Center(
+            child: Icon(Icons.image_not_supported_rounded, color: Colors.grey),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentWidget(
+    BuildContext context,
+    String? docUrl,
+    String? docName,
+  ) {
+    final name = (docName != null && docName.isNotEmpty)
+        ? docName
+        : 'Document.pdf';
+    final isPdf = name.toLowerCase().endsWith('.pdf');
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isMine
+            ? Colors.white.withValues(alpha: 0.18)
+            : const Color(0xFFF3EBE4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isMine
+              ? Colors.white.withValues(alpha: 0.3)
+              : const Color(0xFFE6D7CD),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isPdf
+                  ? const Color(0xFFE53935).withValues(alpha: 0.2)
+                  : const Color(0xFF1976D2).withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              isPdf ? Icons.picture_as_pdf_rounded : Icons.description_rounded,
+              color: isPdf ? const Color(0xFFD32F2F) : const Color(0xFF1976D2),
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isMine ? Colors.white : const Color(0xFF2C2420),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Document',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: isMine
+                        ? Colors.white.withValues(alpha: 0.8)
+                        : const Color(0xFF8D7B74),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            icon: Icon(
+              Icons.download_rounded,
+              color: isMine ? Colors.white : const Color(0xFFCA6347),
+              size: 20,
+            ),
+            onPressed: () {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('Opening $name...')));
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasImage = imageUrl != null && imageUrl!.isNotEmpty;
+    final hasDoc =
+        (documentUrl != null && documentUrl!.isNotEmpty) ||
+        (documentName != null && documentName!.isNotEmpty);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -561,7 +878,7 @@ class _MessageBubble extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.72,
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
             ),
             decoration: BoxDecoration(
               color: isMine
@@ -588,17 +905,12 @@ class _MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (imageUrl != null && imageUrl!.isNotEmpty) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      imageUrl!,
-                      width: double.infinity,
-                      height: 160,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const SizedBox(),
-                    ),
-                  ),
+                if (hasImage) ...[
+                  _buildImageWidget(imageUrl!),
+                  if (content.isNotEmpty || hasDoc) const SizedBox(height: 8),
+                ],
+                if (hasDoc) ...[
+                  _buildDocumentWidget(context, documentUrl, documentName),
                   if (content.isNotEmpty) const SizedBox(height: 8),
                 ],
                 if (content.isNotEmpty)

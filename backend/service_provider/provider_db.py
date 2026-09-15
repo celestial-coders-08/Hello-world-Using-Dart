@@ -94,3 +94,11 @@ def update_status(lookup: str, is_online: bool) -> None:
             (lookup.strip(), int(is_online)),
         )
         db.commit()
+
+def delete_profile(lookup: str) -> None:
+    with connection() as db:
+        db.execute(
+            "DELETE FROM provider_profiles WHERE lookup = ?",
+            (lookup.strip(),),
+        )
+        db.commit()

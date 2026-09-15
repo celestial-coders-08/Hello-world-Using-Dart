@@ -1,3 +1,4 @@
+from service_provider.provider_db import delete_profile
 """
 PawStay FastAPI Backend — main entry point.
 
@@ -26,13 +27,13 @@ from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Re
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 from database.db import get_db, engine
-from database.models import Base, User, OtpCode, Pet, PasswordResetToken
+from database.models import Base, User, OtpCode, Pet, PasswordResetToken, Review
 from Email_Veriication.otp_service import (
     generate_otp,
     save_otp,
@@ -194,6 +195,7 @@ class PetWalkingProviderResponse(BaseModel):
     id: int
     full_name: str
     username: str
+    email: str
     role: str
     city: str
     is_verified: bool
@@ -205,6 +207,30 @@ class PetWalkingProviderResponse(BaseModel):
     daycare_food_charge: int | None = None
     provider_description: str | None = None
     is_online: bool = True
+    average_rating: float = 0
+    review_count: int = 0
+
+
+class ReviewRequest(BaseModel):
+    provider_lookup: str
+    user_lookup: str
+    rating: int
+    description: str
+
+    @field_validator("provider_lookup", "user_lookup", "description")
+    @classmethod
+    def required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be empty.")
+        return value
+
+    @field_validator("rating")
+    @classmethod
+    def valid_rating(cls, value: int) -> int:
+        if value < 1 or value > 5:
+            raise ValueError("Rating must be between 1 and 5.")
+        return value
 
 
 class UpdateProfilePhotoRequest(BaseModel):
@@ -414,6 +440,10 @@ def get_provider_profile(lookup: str, db: Session = Depends(get_db)):
             detail="Provider profile not found.",
         )
 
+    average_rating, review_count = db.query(
+        func.coalesce(func.avg(Review.rating), 0), func.count(Review.id)
+    ).filter(Review.provider_lookup == user.username).first()
+
     return {
         "id": user.id,
         "full_name": user.full_name,
@@ -423,6 +453,8 @@ def get_provider_profile(lookup: str, db: Session = Depends(get_db)):
         "daycare_charge": user.daycare_charge,
         "daycare_food_charge": user.daycare_food_charge,
         "provider_description": user.provider_description,
+        "average_rating": round(float(average_rating or 0), 1),
+        "review_count": int(review_count or 0),
         "is_complete": all(
             value is not None
             for value in (
@@ -454,6 +486,52 @@ def update_provider_profile(
     db.commit()
 
     return {"success": True, "message": "Provider profile saved successfully."}
+
+
+@app.post("/reviews", tags=["Reviews"])
+def submit_review(payload: ReviewRequest, db: Session = Depends(get_db)):
+    provider = get_user_by_lookup(db, payload.provider_lookup)
+    user = get_user_by_lookup(db, payload.user_lookup)
+    if not provider or not user:
+        raise HTTPException(status_code=404, detail="User or provider not found.")
+    review = Review(
+        provider_lookup=provider.username,
+        user_lookup=user.username,
+        rating=payload.rating,
+        description=payload.description,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return {"success": True, "id": review.id}
+
+
+@app.get("/reviews", tags=["Reviews"])
+def get_provider_reviews(provider_lookup: str, db: Session = Depends(get_db)):
+    provider = get_user_by_lookup(db, provider_lookup)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found.")
+    reviews = db.query(Review).filter(
+        Review.provider_lookup == provider.username
+    ).order_by(Review.created_at.desc()).all()
+    response = []
+    for review in reviews:
+        reviewer = get_user_by_lookup(db, review.user_lookup)
+        response.append(
+            {
+                "id": review.id,
+                "rating": review.rating,
+                "description": review.description,
+                "user_lookup": review.user_lookup,
+                "user_name": (
+                    reviewer.full_name
+                    if reviewer and reviewer.full_name
+                    else review.user_lookup
+                ),
+                "created_at": review.created_at.isoformat(),
+            }
+        )
+    return response
 
 
 @app.get("/users/search", response_model=list[ProfileResponse], tags=["Profile"])
@@ -489,13 +567,13 @@ def search_users(q: str = "", db: Session = Depends(get_db)):
 @app.get("/users/chat-candidates", response_model=list[ChatCandidateResponse], tags=["Profile"])
 def get_chat_candidates(user_id: str = "", db: Session = Depends(get_db)):
     """
-    Get all users who signed up as service providers, buyers, or doctors,
+    Get service providers and sellers,
     filtered based on the user's city only.
     """
     user_id_str = user_id.strip()
     current_user = get_user_by_lookup(db, user_id_str) if user_id_str else None
     
-    allowed_roles = ["Service provider", "Pet Service", "User", "Buyer", "Doctor", "Seller"]
+    allowed_roles = ["Service provider", "Pet Service", "Seller"]
     
     query = db.query(User).filter(User.role.in_(allowed_roles))
     
@@ -559,6 +637,17 @@ def get_pet_walking_providers(user_id: str = "", db: Session = Depends(get_db)):
     result = []
     for idx, provider in enumerate(providers):
         provider_profile = get_provider_db_profile(provider.username)
+        average_rating, review_count = db.query(
+            func.coalesce(func.avg(Review.rating), 0), func.count(Review.id)
+        ).filter(Review.provider_lookup == provider.username).first()
+        if (
+            provider_profile["walking_charge"] is None
+            and provider.email
+            and provider.email != provider.username
+        ):
+            email_profile = get_provider_db_profile(provider.email)
+            if email_profile["walking_charge"] is not None:
+                provider_profile = email_profile
         if not provider_profile["is_online"]:
             continue
 
@@ -570,6 +659,7 @@ def get_pet_walking_providers(user_id: str = "", db: Session = Depends(get_db)):
                 id=provider.id,
                 full_name=provider.full_name,
                 username=provider.username,
+                email=provider.email,
                 role=provider.role,
                 city=provider.city or "",
                 is_verified=provider.is_verified,
@@ -581,6 +671,8 @@ def get_pet_walking_providers(user_id: str = "", db: Session = Depends(get_db)):
                 daycare_food_charge=provider_profile["daycare_food_charge"],
                 provider_description=provider_profile["provider_description"],
                 is_online=bool(provider_profile["is_online"]),
+                average_rating=round(float(average_rating or 0), 1),
+                review_count=int(review_count or 0),
             )
         )
 
@@ -626,6 +718,9 @@ def delete_account(payload: DeleteAccountRequest, db: Session = Depends(get_db))
     try:
         # Delete OTP records associated with the user's email
         db.query(OtpCode).filter(OtpCode.email == user.email).delete(synchronize_session=False)
+        delete_profile(payload.lookup)
+        delete_profile(user.username)
+        delete_profile(user.email)
         db.flush()
         # Clear profile image reference (removes from database storage)
         user.profile_image = None

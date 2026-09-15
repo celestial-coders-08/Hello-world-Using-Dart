@@ -261,6 +261,24 @@ class ApiService {
       } catch (_) {}
     }
 
+    try {
+      final reviewProfileUri = Uri.parse(
+        '${ApiConfig.baseUrl}/provider/profile',
+      ).replace(queryParameters: {'lookup': providerLookup});
+      final res = await _client
+          .get(reviewProfileUri, headers: _headers)
+          .timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final reviewProfile = Map<String, dynamic>.from(jsonDecode(res.body));
+        if (reviewProfile.containsKey('average_rating')) {
+          result['average_rating'] = reviewProfile['average_rating'];
+        }
+        if (reviewProfile.containsKey('review_count')) {
+          result['review_count'] = reviewProfile['review_count'];
+        }
+      }
+    } catch (_) {}
+
     // Now try provider specific profile charges & description
     for (final baseUrl in _candidateProviderUrls) {
       try {
@@ -345,6 +363,43 @@ class ApiService {
       }
     }
     return false;
+  }
+
+  /// Delete an account after the main backend verifies its password.
+  static Future<Map<String, dynamic>> deleteAccount({
+    required String lookup,
+    required String password,
+  }) async {
+    final payload = jsonEncode({'lookup': lookup, 'password': password});
+    Object? lastError;
+
+    for (final baseUrl in [
+      ApiConfig.baseUrl,
+      'http://127.0.0.1:8000',
+      'http://${ApiConfig.deviceIp}:8000',
+      'http://10.0.2.2:8000',
+      'http://localhost:8000',
+    ]) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('$baseUrl/delete-account'),
+              headers: _headers,
+              body: payload,
+            )
+            .timeout(const Duration(seconds: 10));
+        final decoded = jsonDecode(response.body);
+        return {
+          'success': response.statusCode == 200,
+          'message': decoded['message'] ?? decoded['detail'],
+        };
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    debugPrint('[API ERROR] deleteAccount: $lastError');
+    return {'success': false, 'message': 'Could not connect to server.'};
   }
 
   // ---------------------------------------------------------------------------
@@ -448,7 +503,7 @@ class ApiService {
   }) async {
     try {
       final uri = Uri.parse(
-        '$_providerBaseUrl/provider/reviews'
+        '${ApiConfig.baseUrl}/reviews'
         '${providerLookup != null ? "?provider_lookup=$providerLookup" : ""}',
       );
       final response = await _client

@@ -27,6 +27,7 @@ class _AddPetScreenState extends State<AddPetScreen>
   final _ageController = TextEditingController();
   final _dietController = TextEditingController();
   final _otherPetTypeController = TextEditingController();
+  final LocalPetStorage _petStorage = LocalPetStorage();
 
   String _selectedCategory = 'Dog';
   String _selectedAgeUnit = 'Years';
@@ -48,6 +49,17 @@ class _AddPetScreenState extends State<AddPetScreen>
       _selectedCategory = pet.type;
       _ageController.text = pet.age.toString();
       _dietController.text = pet.dietaryPreferences;
+      final savedImage = pet.profileImage;
+      if (savedImage != null && savedImage.isNotEmpty) {
+        try {
+          final encodedImage = savedImage.contains(',')
+              ? savedImage.split(',').last
+              : savedImage;
+          _profileImageBytes = base64Decode(encodedImage);
+        } catch (_) {
+          _profileImageBytes = null;
+        }
+      }
     }
 
     _avatarAnimController = AnimationController(
@@ -136,43 +148,41 @@ class _AddPetScreenState extends State<AddPetScreen>
     setState(() => _isSaving = true);
 
     try {
+      await _petStorage.savePet(pet);
+
       final body = jsonEncode(pet.toJson());
-      final response = await http
-          .post(
-            Uri.parse('${ApiConfig.baseUrl}/pets'),
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
-          .timeout(const Duration(seconds: 10));
+      try {
+        await http
+            .post(
+              Uri.parse('${ApiConfig.baseUrl}/pets'),
+              headers: {'Content-Type': 'application/json'},
+              body: body,
+            )
+            .timeout(const Duration(seconds: 10));
+      } catch (_) {
+        // The local profile remains the source of truth when sync is unavailable.
+      }
 
       if (!mounted) return;
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        _showSnack(
-          _isEditing ? 'Pet profile updated! 🐾' : 'Pet profile saved! 🐾',
-        );
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (c, a, sa) =>
-                  HomeScreen(userLookup: widget.userLookup),
-              transitionsBuilder: (c, a, sa, child) =>
-                  FadeTransition(opacity: a, child: child),
-              transitionDuration: const Duration(milliseconds: 400),
-            ),
-          );
-        }
-      } else {
-        final decoded = jsonDecode(response.body);
-        _showSnack(
-          decoded['detail']?.toString() ?? 'Failed to save pet profile.',
-          isError: true,
+      _showSnack(
+        _isEditing ? 'Pet profile updated! 🐾' : 'Pet profile saved! 🐾',
+      );
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (c, a, sa) =>
+                HomeScreen(userLookup: widget.userLookup),
+            transitionsBuilder: (c, a, sa, child) =>
+                FadeTransition(opacity: a, child: child),
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
         );
       }
     } catch (_) {
-      _showSnack('Could not connect to server.', isError: true);
+      _showSnack('Could not save pet profile.', isError: true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -376,7 +386,7 @@ class _AddPetScreenState extends State<AddPetScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
             color: PawStayTheme.onSurfaceVariant,
             size: 20,
@@ -555,7 +565,7 @@ class _AddPetScreenState extends State<AddPetScreen>
                                   child: DropdownButton<String>(
                                     value: _selectedAgeUnit,
                                     isDense: true,
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.keyboard_arrow_down_rounded,
                                       size: 20,
                                       color: PawStayTheme.onSurfaceVariant,
@@ -672,9 +682,7 @@ class _AddPetScreenState extends State<AddPetScreen>
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: const BorderSide(
-                            color: PawStayTheme.outlineVariant,
-                          ),
+                          side: BorderSide(color: PawStayTheme.outlineVariant),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
                               PawStayTheme.radiusMd,

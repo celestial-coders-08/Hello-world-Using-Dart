@@ -125,7 +125,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
             color: PawStayTheme.onSurfaceVariant,
             size: 20,
@@ -339,7 +339,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
       ),
     );
   }
-  
+
   Widget _buildTextField({
     required TextEditingController controller,
     required String hintText,

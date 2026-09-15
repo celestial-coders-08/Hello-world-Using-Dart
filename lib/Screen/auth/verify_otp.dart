@@ -204,7 +204,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
           filled: true,
           fillColor: PawStayTheme.surfaceContainerLow,
           hintText: '-',
-          hintStyle: const TextStyle(color: PawStayTheme.outlineVariant),
+          hintStyle: TextStyle(color: PawStayTheme.outlineVariant),
           contentPadding: const EdgeInsets.symmetric(vertical: 18),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
@@ -237,7 +237,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: PawStayTheme.onSurface),
+        iconTheme: IconThemeData(color: PawStayTheme.onSurface),
         title: Text(
           'OTP Verification',
           style: GoogleFonts.plusJakartaSans(
@@ -266,7 +266,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                   Container(
                     width: 76,
                     height: 76,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: PawStayTheme.surfaceContainer,
                     ),

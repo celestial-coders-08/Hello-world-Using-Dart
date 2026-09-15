@@ -14,6 +14,7 @@ import 'shop_screen.dart';
 import 'doctor_screen.dart';
 import 'food_screen.dart';
 import '../../widgets/app_drawer.dart';
+import '../../models/pet_storage.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? userLookup;
@@ -29,6 +30,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _displayName = 'Pet Parent';
   bool _isLoadingUser = false;
   String? _userProfileImageBase64;
+  Pet? _savedPet;
+  final LocalPetStorage _petStorage = LocalPetStorage();
   final TextEditingController _searchController = TextEditingController();
 
   /// Returns a greeting based on the current hour.
@@ -44,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _fetchUserProfile();
     _fetchPets();
+    _loadSavedPet();
   }
 
   @override
@@ -97,25 +101,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadSavedPet() async {
+    final userLookup = widget.userLookup?.trim();
+    if (userLookup == null || userLookup.isEmpty) return;
+
+    final pet = await _petStorage.loadPetIfExists(userLookup);
+    if (mounted) {
+      setState(() => _savedPet = pet);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 768;
+    final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: PawStayTheme.background,
+      backgroundColor: colors.surface,
       drawer: AppDrawer(userLookup: widget.userLookup, activeRoute: 'home'),
       appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
           ? null
           : AppBar(
-              backgroundColor: PawStayTheme.surface,
+              backgroundColor: colors.surface,
               elevation: 0,
               centerTitle: true,
               leading: Builder(
                 builder: (context) => IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.menu_rounded,
-                    color: PawStayTheme.onSurfaceVariant,
+                    color: colors.onSurfaceVariant,
                   ),
                   onPressed: () => Scaffold.of(context).openDrawer(),
                 ),
@@ -172,9 +187,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               base64Decode(_userProfileImageBase64!),
                             ),
                           )
-                        : const Icon(
+                        : Icon(
                             Icons.account_circle_outlined,
-                            color: PawStayTheme.onSurfaceVariant,
+                            color: colors.onSurfaceVariant,
                             size: 28,
                           ),
                   ),
@@ -196,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bottom Navigation bar for mobile view with active tabs
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surfaceContainer,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -208,9 +223,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentNavIndex,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
+          backgroundColor: colors.surfaceContainer,
           selectedItemColor: PawStayTheme.primary,
-          unselectedItemColor: PawStayTheme.onSurfaceVariant,
+          unselectedItemColor: colors.onSurfaceVariant,
           selectedLabelStyle: GoogleFonts.plusJakartaSans(
             fontWeight: FontWeight.bold,
             fontSize: 11,
@@ -265,6 +280,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDashboard(bool isDesktop) {
+    final colors = Theme.of(context).colorScheme;
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -285,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: isDesktop ? 36 : 28,
                         fontWeight: FontWeight.bold,
-                        color: PawStayTheme.onSurface,
+                        color: colors.onSurface,
                         letterSpacing: -0.8,
                       ),
                     ),
@@ -307,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   'What does your pet need today?',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 16,
-                    color: PawStayTheme.onSurfaceVariant,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -320,7 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
               width: double.infinity,
               constraints: const BoxConstraints(maxWidth: 680),
               decoration: BoxDecoration(
-                color: PawStayTheme.surfaceContainerLowest,
+                color: colors.surfaceContainer,
                 borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
                 border: Border.all(
                   color: PawStayTheme.outlineVariant.withValues(alpha: 0.5),
@@ -331,19 +348,17 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   const SizedBox(width: 8),
-                  const Icon(Icons.search, color: PawStayTheme.outline),
+                  Icon(Icons.search, color: PawStayTheme.outline),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 16,
-                        color: PawStayTheme.onSurface,
+                        color: colors.onSurface,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Search sitters, walkers, doctors...',
-                        hintStyle: TextStyle(
-                          color: PawStayTheme.tertiaryContainer,
-                        ),
+                        hintStyle: TextStyle(color: colors.onSurfaceVariant),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -401,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: PawStayTheme.onSurface,
+                color: colors.onSurface,
               ),
             ),
             const SizedBox(height: 16),
@@ -424,17 +439,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          AddPetScreen(userLookup: widget.userLookup),
+                      builder: (_) => AddPetScreen(
+                        userLookup: widget.userLookup,
+                        existingPet: _savedPet,
+                      ),
                     ),
-                  ),
+                  ).then((_) => _loadSavedPet()),
                 ),
                 _buildBentoItem(
                   title: 'Buy pet',
                   subtitle: 'Find a friend',
                   icon: Icons.shopping_basket_rounded,
-                  backgroundColor: PawStayTheme.surfaceContainerLow,
-                  iconColor: PawStayTheme.onSurfaceVariant,
+                  backgroundColor: colors.surfaceContainer,
+                  iconColor: colors.onSurfaceVariant,
                   onTap: () => setState(() => _currentNavIndex = 2),
                 ),
                 _buildBentoItem(
@@ -514,7 +531,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: PawStayTheme.onSurface,
+                    color: colors.onSurface,
                   ),
                 ),
                 TextButton(
@@ -546,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 height: 200,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: PawStayTheme.surfaceContainerLow,
+                  color: colors.surfaceContainer,
                   borderRadius: BorderRadius.circular(PawStayTheme.radiusLg),
                   border: Border.all(
                     color: PawStayTheme.outlineVariant.withValues(alpha: 0.5),
@@ -595,7 +612,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.92),
+                              color: colors.surface.withValues(alpha: 0.92),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
@@ -612,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
-                                    color: PawStayTheme.onSurface,
+                                    color: colors.onSurface,
                                   ),
                                 ),
                               ],
@@ -668,11 +685,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         decoration: BoxDecoration(
-          color: PawStayTheme.surfaceContainerLow,
+          color: Theme.of(context).colorScheme.surfaceContainer,
           borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
           boxShadow: PawStayTheme.ambientShadow1,
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.8),
+            color: Theme.of(context).colorScheme.outlineVariant,
             width: 1.0,
           ),
         ),
@@ -733,8 +750,8 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.all(24),
@@ -765,7 +782,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: PawStayTheme.onSurface,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
@@ -774,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
-                  color: PawStayTheme.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 24),

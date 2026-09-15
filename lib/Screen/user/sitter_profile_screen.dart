@@ -12,20 +12,8 @@ import 'pet_walking_screen.dart';
 class SitterProfileScreen extends StatelessWidget {
   final PetWalker walker;
   final String? userLookup;
-  final int? walkingCharge;
-  final int? daycareCharge;
-  final int? daycareFoodCharge;
-  final String? providerDescription;
 
-  const SitterProfileScreen({
-    super.key,
-    required this.walker,
-    this.userLookup,
-    this.walkingCharge,
-    this.daycareCharge,
-    this.daycareFoodCharge,
-    this.providerDescription,
-  });
+  const SitterProfileScreen({super.key, required this.walker, this.userLookup});
 
   Future<void> _openChat(BuildContext context) async {
     final currentUser = userLookup?.trim();
@@ -111,7 +99,7 @@ class SitterProfileScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_back_rounded,
                         color: PawStayTheme.onSurface,
                         size: 20,
@@ -147,7 +135,7 @@ class SitterProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.ios_share_rounded,
                           size: 18,
                           color: PawStayTheme.onSurface,
@@ -166,10 +154,6 @@ class SitterProfileScreen extends StatelessWidget {
                       _buildHeader(context),
                       const SizedBox(height: 22),
                       _buildServicesSection(),
-                      const SizedBox(height: 22),
-                      _buildAboutHomeSection(),
-                      const SizedBox(height: 22),
-                      _buildLocationSection(),
                       // Bottom padding for the sticky button
                       const SizedBox(height: 100),
                     ],
@@ -290,24 +274,14 @@ class SitterProfileScreen extends StatelessWidget {
 
             const SizedBox(height: 6),
 
-            // Location + distance
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.location_on_rounded,
-                  size: 14,
-                  color: PawStayTheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  '${walker.city.isNotEmpty ? walker.city : 'Austin, TX'} (${walker.distance})',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    color: PawStayTheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+            // Email
+            Text(
+              walker.email,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: PawStayTheme.onSurfaceVariant,
+              ),
             ),
 
             const SizedBox(height: 12),
@@ -380,9 +354,9 @@ class SitterProfileScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                providerDescription?.isNotEmpty == true
-                    ? providerDescription!
-                    : '"I\'ve been a professional pet sitter for over 5 years. I specialize in high-energy dogs and senior care. I treat every pet like my own family, ensuring they get the love, exercise, and attention they deserve while you\'re away."',
+                walker.providerDescription?.trim().isNotEmpty == true
+                    ? walker.providerDescription!.trim()
+                    : 'No provider description available.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
@@ -399,9 +373,9 @@ class SitterProfileScreen extends StatelessWidget {
   }
 
   Widget _buildServicesSection() {
-    final walkPrice = walkingCharge ?? 20;
-    final daycarePrice = daycareCharge ?? 45;
-    final daycareFoodPrice = daycareFoodCharge ?? 55;
+    final walkPrice = walker.walkingCharge;
+    final daycarePrice = walker.daycareCharge;
+    final daycareFoodPrice = walker.daycareFoodCharge;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,9 +394,8 @@ class SitterProfileScreen extends StatelessWidget {
           iconColor: const Color(0xFFB85C38),
           iconBg: const Color(0xFFFCEEE8),
           title: 'Pet Walking',
-          subtitle:
-              '30-minute neighborhood walks to keep your dog active and happy.',
-          price: '₹$walkPrice',
+          subtitle: null,
+          price: walkPrice != null ? '₹$walkPrice' : 'Not set',
           unit: '/walk',
         ),
         const SizedBox(height: 10),
@@ -431,9 +404,8 @@ class SitterProfileScreen extends StatelessWidget {
           iconColor: const Color(0xFFC07B3B),
           iconBg: const Color(0xFFFCF3E8),
           title: 'Day Care',
-          subtitle:
-              'Full day supervision in my home. Lots of playtime and cuddles.',
-          price: '₹$daycarePrice',
+          subtitle: 'Provider pricing not provided.',
+          price: daycarePrice != null ? '₹$daycarePrice' : 'Not set',
           unit: '/day',
         ),
         const SizedBox(height: 10),
@@ -442,9 +414,8 @@ class SitterProfileScreen extends StatelessWidget {
           iconColor: const Color(0xFFB05030),
           iconBg: const Color(0xFFF5E8E2),
           title: 'Day Care + Food',
-          subtitle:
-              'Full day supervision including premium organic meals and treats provided by me.',
-          price: '₹$daycareFoodPrice',
+          subtitle: 'Provider pricing not provided.',
+          price: daycareFoodPrice != null ? '₹$daycareFoodPrice' : 'Not set',
           unit: '/day',
         ),
       ],
@@ -456,7 +427,7 @@ class SitterProfileScreen extends StatelessWidget {
     required Color iconColor,
     required Color iconBg,
     required String title,
-    required String subtitle,
+    required String? subtitle,
     required String price,
     required String unit,
   }) {
@@ -500,15 +471,17 @@ class SitterProfileScreen extends StatelessWidget {
                     color: PawStayTheme.onSurface,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: PawStayTheme.onSurfaceVariant,
-                    height: 1.4,
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      color: PawStayTheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -538,148 +511,6 @@ class SitterProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAboutHomeSection() {
-    final tags = [
-      (Icons.home_outlined, 'House'),
-      (Icons.fence_rounded, 'Fenced Yard'),
-      (Icons.child_care_outlined, 'No Children'),
-      (Icons.pets_rounded, '1 Resident Dog'),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "About ${walker.fullName.split(' ').first}'s Home",
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: PawStayTheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFF0E6E0)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: tags.map((t) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(t.$1, size: 18, color: PawStayTheme.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Text(
-                      t.$2,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: PawStayTheme.onSurface,
-                      ),
-                    ),
-                  ],
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLocationSection() {
-    final locationLabel = walker.city.isNotEmpty
-        ? walker.city
-        : 'Zilker Park Area, Austin, TX';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Location',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: PawStayTheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          locationLabel,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13,
-            color: PawStayTheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Map placeholder
-        Container(
-          height: 160,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFF0E6E0)),
-            color: const Color(0xFFF5EDE6),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            children: [
-              // Grid-like map tiles background
-              CustomPaint(
-                size: const Size(double.infinity, 160),
-                painter: _MapBgPainter(),
-              ),
-              // Map label overlay
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                      child: Text(
-                        'Sitter Profile – Map',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: PawStayTheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Icon(
-                      Icons.location_on_rounded,
-                      color: PawStayTheme.primary,
-                      size: 36,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildAvatar({required double size}) {
     if (walker.profileImage != null && walker.profileImage!.trim().isNotEmpty) {
       try {
@@ -692,7 +523,7 @@ class SitterProfileScreen extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _initialsAvatar(size),
+          errorBuilder: (_, _, _) => _initialsAvatar(size),
         );
       } catch (_) {}
     }
@@ -718,46 +549,4 @@ class SitterProfileScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _MapBgPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = const Color(0xFFE0D0C8)
-      ..strokeWidth = 0.8
-      ..style = PaintingStyle.stroke;
-
-    // Horizontal lines
-    for (double y = 0; y < size.height; y += 24) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-    // Vertical lines
-    for (double x = 0; x < size.width; x += 32) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-    }
-
-    // Road-like shapes
-    final roadPaint = Paint()
-      ..color = const Color(0xFFEAD8CE)
-      ..strokeWidth = 10
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path()
-      ..moveTo(0, size.height * 0.45)
-      ..lineTo(size.width * 0.4, size.height * 0.45)
-      ..lineTo(size.width * 0.4, size.height * 0.2)
-      ..lineTo(size.width, size.height * 0.2);
-    canvas.drawPath(path, roadPaint);
-
-    final path2 = Path()
-      ..moveTo(size.width * 0.6, 0)
-      ..lineTo(size.width * 0.6, size.height * 0.65)
-      ..lineTo(size.width, size.height * 0.65);
-    canvas.drawPath(path2, roadPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

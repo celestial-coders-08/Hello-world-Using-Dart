@@ -17,7 +17,7 @@ class ApiConfig {
   /// This is used when running on a physical Android device via wireless debug.
   /// ──────────────────────────────────────────────────────────────────────────
   static const String deviceIp =
-      '192.168.31.63'; // Your laptop's LAN IP (confirmed via ipconfig)
+      '192.168.1.101'; // Your laptop's LAN IP (confirmed via ipconfig)
 
   /// Whether we are running on a real physical Android device.
   /// On a physical device, [isAndroid] is true but [10.0.2.2] does NOT work.

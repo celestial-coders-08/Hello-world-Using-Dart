@@ -1,5 +1,8 @@
 import 'dart:core';
 
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
 /// Pet model representing a pet profile
 class Pet {
   final String userId;
@@ -85,6 +88,56 @@ class DummyPetStorage implements IPetStorage {
         healthStatus: 'Sample health info',
       ),
     ];
+  }
+
+  @override
+  Future<void> saveProfilePhoto(String assetPath) async {}
+
+  @override
+  Future<String> getProfilePhoto() async => 'default_profile.jpg';
+}
+
+class LocalPetStorage implements IPetStorage {
+  static const String _petKeyPrefix = 'pet_profile_';
+
+  String _keyForUser(String userId) =>
+      '$_petKeyPrefix${Uri.encodeComponent(userId.trim())}';
+
+  @override
+  Future<void> savePet(Pet pet) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _keyForUser(pet.userId),
+      jsonEncode(pet.toJson()),
+    );
+  }
+
+  Future<Pet?> loadPetIfExists(String userId) async {
+    final preferences = await SharedPreferences.getInstance();
+    final encodedPet = preferences.getString(_keyForUser(userId));
+    if (encodedPet == null || encodedPet.isEmpty) return null;
+
+    return Pet.fromJson(jsonDecode(encodedPet) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Pet> loadPet(String userId) async {
+    final pet = await loadPetIfExists(userId);
+    if (pet == null) {
+      throw StateError('No pet profile saved for this user.');
+    }
+    return pet;
+  }
+
+  @override
+  Future<void> deletePet(String userId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_keyForUser(userId));
+  }
+
+  @override
+  Future<List<Pet>> getAllPetsByType(String petType) async {
+    return [];
   }
 
   @override

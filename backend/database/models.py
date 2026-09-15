@@ -82,3 +82,14 @@ class Pet(Base):
     health_status = Column(Text, nullable=True)
     profile_image = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_lookup = Column(String(120), index=True, nullable=False)
+    user_lookup = Column(String(120), index=True, nullable=False)
+    rating = Column(Integer, nullable=False)
+    description = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
