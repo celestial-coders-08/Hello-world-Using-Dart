@@ -9,6 +9,7 @@ class ApiConfig {
   static const int port = 8000;
   static const int messagePort = 8001;
   static const int providerPort = 8002;
+  static const int sellerPort = 8003;
 
   /// ── IMPORTANT ─────────────────────────────────────────────────────────────
   /// Set this to your laptop's local network IP address (e.g. 192.168.1.5).
@@ -17,7 +18,7 @@ class ApiConfig {
   /// This is used when running on a physical Android device via wireless debug.
   /// ──────────────────────────────────────────────────────────────────────────
   static const String deviceIp =
-      '192.168.1.101'; // Your laptop's LAN IP (confirmed via ipconfig)
+      '192.168.1.100'; // Your laptop's LAN IP (confirmed via ipconfig)
 
   /// Whether we are running on a real physical Android device.
   /// On a physical device, [isAndroid] is true but [10.0.2.2] does NOT work.
@@ -59,5 +60,16 @@ class ApiConfig {
       return 'http://$deviceIp:$providerPort';
     }
     return 'http://127.0.0.1:$providerPort';
+  }
+
+  /// URL for the independent Seller API server.
+  static String get sellerBaseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:$sellerPort';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://$deviceIp:$sellerPort';
+    }
+    return 'http://127.0.0.1:$sellerPort';
   }
 }

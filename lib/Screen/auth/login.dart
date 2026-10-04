@@ -8,6 +8,7 @@ import '../../config/api_config.dart';
 import 'signup.dart';
 import '../user/home.dart';
 import '../provider/provider_home.dart';
+import '../seller/seller_dashboard_screen.dart';
 import '../user/verify_otp.dart';
 import 'forgot_password.dart';
 
@@ -103,19 +104,24 @@ class _LoginScreenState extends State<LoginScreen>
             )
             .timeout(const Duration(seconds: 10));
 
-        if (profileResponse.statusCode == 200) {
-          final profile = jsonDecode(profileResponse.body);
-          role = profile['role']?.toString();
+        if (profileResponse.statusCode != 200) {
+          _showSnack('Could not load your account role. Please try again.', isError: true);
+          return;
         }
+        final profile = jsonDecode(profileResponse.body);
+        role = profile['role']?.toString();
         if (!mounted) return;
 
+        final isSeller = role?.trim().toLowerCase() == 'seller';
         final isProvider =
             role?.trim().toLowerCase() == 'pet service' ||
             role?.toLowerCase().contains('service provider') == true;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => isProvider
+            builder: (context) => isSeller
+                ? SellerDashboardScreen(sellerLookup: lookup)
+                : isProvider
                 ? ProviderDashboardScreen(providerLookup: lookup)
                 : HomeScreen(userLookup: lookup),
           ),
