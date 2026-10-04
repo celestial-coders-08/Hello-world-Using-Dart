@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../Screen/provider/doctor.dart';
 import '../Screen/provider/provider_profile_screen.dart';
 import '../Screen/user/contact_support_screen.dart';
-import '../Screen/user/doctor_screen.dart';
 import '../Screen/user/feedback_screen.dart';
 import '../Screen/user/food_screen.dart';
 import '../Screen/user/settings_screen.dart';

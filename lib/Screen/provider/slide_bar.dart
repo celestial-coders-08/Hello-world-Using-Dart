@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../theme/pawstay_theme.dart';
 import '../../widgets/profile_avatar.dart';
 import '../user/contact_support_screen.dart';
+import 'doctor.dart';
 import 'provider_profile_screen.dart';
 
 class ProviderSlideBar extends StatelessWidget {
@@ -65,6 +66,16 @@ class ProviderSlideBar extends StatelessWidget {
                           _close(context);
                           onRatingTap?.call();
                         },
+                      ),
+                      _buildItem(
+                        context,
+                        icon: Icons.medical_services_outlined,
+                        title: 'Call Doctor',
+                        route: 'doctor',
+                        onTap: () => _open(
+                          context,
+                          DoctorScreen(userLookup: providerLookup),
+                        ),
                       ),
                       _buildItem(
                         context,

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
+import '../auth/login.dart';
 
 class ProviderProfileScreen extends StatefulWidget {
   final String? providerLookup;
@@ -387,6 +388,29 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: PawStayTheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                            (route) => false,
+                          );
+                        },
+                        icon: const Icon(Icons.logout_rounded),
+                        label: Text(
+                          'Log Out',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),

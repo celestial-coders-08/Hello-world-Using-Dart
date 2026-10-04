@@ -6,6 +6,8 @@ import '../../theme/pawstay_theme.dart';
 import '../user/chat_screen.dart';
 import '../user/pet_map_screen.dart';
 import '../user/shop_screen.dart';
+import 'analysis.dart';
+import 'doctor.dart';
 import 'provider_profile_screen.dart';
 import 'slide_bar.dart';
 import 'your_rating.dart';
@@ -220,6 +222,24 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     );
   }
 
+  void _openDoctorScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DoctorScreen(userLookup: widget.providerLookup),
+      ),
+    );
+  }
+
+  void _openAnalysisScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AnalysisScreen(providerLookup: widget.providerLookup),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
@@ -362,7 +382,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 BottomNavigationBarItem(
                   icon: Icon(Icons.smart_toy_outlined),
                   activeIcon: Icon(Icons.smart_toy_rounded),
-                  label: 'Chat with AI',
+                  label: 'AI',
                 ),
               ],
               onTap: (index) {
@@ -656,18 +676,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 iconBg: PawStayTheme.secondaryContainer.withValues(alpha: 0.4),
                 iconColor: PawStayTheme.secondary,
                 title: 'Analysis',
-                subtitle: '68 tasks done • +15%',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Provider Analytics Dashboard',
-                        style: GoogleFonts.plusJakartaSans(color: Colors.white),
-                      ),
-                      backgroundColor: PawStayTheme.secondary,
-                    ),
-                  );
-                },
+                subtitle: 'View rating trends',
+                onTap: _openAnalysisScreen,
               ),
 
               // 3. Buy pet
@@ -675,8 +685,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 icon: Icons.shopping_basket_rounded,
                 iconBg: PawStayTheme.surfaceContainerLow,
                 iconColor: PawStayTheme.onSurfaceVariant,
-                title: 'Buy pet',
-                subtitle: 'Client pet matches',
+                title: 'Buy pet & Food',
+                subtitle: 'Buy pet essentials & food',
                 onTap: () => setState(() => _currentNavIndex = 2),
               ),
 
@@ -687,47 +697,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 iconColor: PawStayTheme.error,
                 title: 'Doctor',
                 subtitle: '24/7 Vet support',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '24/7 Vet support line connected',
-                        style: GoogleFonts.plusJakartaSans(color: Colors.white),
-                      ),
-                      backgroundColor: PawStayTheme.error,
-                    ),
-                  );
-                },
-              ),
-
-              // 5. Food
-              _buildOverviewCard(
-                icon: Icons.restaurant_rounded,
-                iconBg: PawStayTheme.primaryContainer.withValues(alpha: 0.2),
-                iconColor: PawStayTheme.primary,
-                title: 'Food',
-                subtitle: 'Meals & nutrition',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Meals & Nutrition planner open',
-                        style: GoogleFonts.plusJakartaSans(color: Colors.white),
-                      ),
-                      backgroundColor: PawStayTheme.primary,
-                    ),
-                  );
-                },
-              ),
-
-              // 6. Pet Care
-              _buildOverviewCard(
-                icon: Icons.favorite_rounded,
-                iconBg: const Color(0xFFFCE7F3),
-                iconColor: const Color(0xFFDB2777),
-                title: 'Pet Care',
-                subtitle: 'Daily active visits',
-                onTap: _openProfileScreen,
+                onTap: _openDoctorScreen,
               ),
             ],
           ),

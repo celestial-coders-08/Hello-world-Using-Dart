@@ -22,7 +22,7 @@
       "contact_id": "hello",
       "contact_name": "varad",
       "contact_avatar_url": null,
-      "updated_at": "2026-09-12T08:57:01.764310"
+      "updated_at": "2026-10-04T09:42:52.733711"
     },
     {
       "id": 4,
@@ -288,6 +288,15 @@
       "content": "Hi what you want",
       "timestamp": "2026-09-12T08:57:01.764310",
       "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 29,
+      "conversation_id": 3,
+      "sender_id": "internshipwerbung@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-10-04T09:42:52.733711",
+      "is_read": false,
       "image_url": null
     }
   ]

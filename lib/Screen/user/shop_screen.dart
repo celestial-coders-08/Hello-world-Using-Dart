@@ -13,6 +13,7 @@ class ShopScreen extends StatefulWidget {
 
 class _ShopScreenState extends State<ShopScreen> {
   int _selectedCategoryIndex = 0;
+  final TextEditingController _searchController = TextEditingController();
 
   final List<String> _categories = [
     'All Products',
@@ -80,14 +81,24 @@ class _ShopScreenState extends State<ShopScreen> {
   ];
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final filteredProducts = _selectedCategoryIndex == 0
-        ? _products
-        : _products
-              .where(
-                (p) => p['category'] == _categories[_selectedCategoryIndex],
-              )
-              .toList();
+    final query = _searchController.text.trim().toLowerCase();
+    final filteredProducts = _products.where((product) {
+      final matchesCategory =
+          _selectedCategoryIndex == 0 ||
+          product['category'] == _categories[_selectedCategoryIndex];
+      final matchesSearch =
+          query.isEmpty ||
+          product['name'].toString().toLowerCase().contains(query) ||
+          product['category'].toString().toLowerCase().contains(query);
+      return matchesCategory && matchesSearch;
+    }).toList();
 
     return Scaffold(
       backgroundColor: PawStayTheme.background,
@@ -139,6 +150,8 @@ class _ShopScreenState extends State<ShopScreen> {
                 ),
               ),
               child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Search food, toys, accessories...',
                   hintStyle: GoogleFonts.plusJakartaSans(
@@ -149,6 +162,16 @@ class _ShopScreenState extends State<ShopScreen> {
                     Icons.search,
                     color: PawStayTheme.onSurfaceVariant,
                   ),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                   border: InputBorder.none,
                 ),
               ),
@@ -209,131 +232,146 @@ class _ShopScreenState extends State<ShopScreen> {
 
             const SizedBox(height: 14),
 
-            // Product Grid
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filteredProducts.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.78,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-              ),
-              itemBuilder: (context, index) {
-                final product = filteredProducts[index];
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: PawStayTheme.outlineVariant.withValues(alpha: 0.4),
+            if (filteredProducts.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 48),
+                child: Center(
+                  child: Text(
+                    'No products found.',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: PawStayTheme.onSurfaceVariant,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.025),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
                   ),
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: product['color'] as Color,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              product['icon'] as IconData,
-                              size: 42,
-                              color: product['iconColor'] as Color,
+                ),
+              )
+            else
+              // Product Grid
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredProducts.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.78,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                ),
+                itemBuilder: (context, index) {
+                  final product = filteredProducts[index];
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: PawStayTheme.outlineVariant.withValues(
+                          alpha: 0.4,
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.025),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: product['color'] as Color,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                product['icon'] as IconData,
+                                size: 42,
+                                color: product['iconColor'] as Color,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        product['name'].toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: PawStayTheme.onSurface,
+                        const SizedBox(height: 10),
+                        Text(
+                          product['name'].toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: PawStayTheme.onSurface,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.star_rounded,
-                            size: 16,
-                            color: Colors.amber,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            product['rating'].toString(),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: PawStayTheme.onSurfaceVariant,
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 16,
+                              color: Colors.amber,
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            product['price'].toString(),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: PawStayTheme.primary,
+                            const SizedBox(width: 4),
+                            Text(
+                              product['rating'].toString(),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: PawStayTheme.onSurfaceVariant,
+                              ),
                             ),
-                          ),
-                          InkWell(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    '${product['name']} added to cart!',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  backgroundColor: PawStayTheme.primary,
-                                  duration: const Duration(seconds: 1),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              product['price'].toString(),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
                                 color: PawStayTheme.primary,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.add_rounded,
-                                size: 18,
-                                color: Colors.white,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                            InkWell(
+                              onTap: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '${product['name']} added to cart!',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    backgroundColor: PawStayTheme.primary,
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: PawStayTheme.primary,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.add_rounded,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
