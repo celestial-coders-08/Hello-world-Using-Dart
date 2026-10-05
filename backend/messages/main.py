@@ -153,7 +153,7 @@ async def send_message(sid, data):
     content = data.get("content", "")
     image_url = data.get("image_url")
 
-    if not conversation_id or not sender_id or not content.strip():
+    if not conversation_id or not sender_id or (not content.strip() and not image_url):
         return
 
     chats = load_chats_data()

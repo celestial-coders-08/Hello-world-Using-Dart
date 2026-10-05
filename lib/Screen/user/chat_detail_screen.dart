@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
@@ -740,37 +742,175 @@ class _MessageBubble extends StatelessWidget {
     required this.time,
   });
 
-  Widget _buildImageWidget(String url) {
+  Widget _buildImageWidget(BuildContext context, String url) {
+    late final Widget image;
     if (url.startsWith('data:image')) {
       try {
         final base64Bytes = base64Decode(url.split(',').last);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            base64Bytes,
-            width: double.infinity,
-            height: 180,
-            fit: BoxFit.cover,
-          ),
+        image = Image.memory(
+          base64Bytes,
+          width: double.infinity,
+          height: 180,
+          fit: BoxFit.cover,
         );
-      } catch (_) {}
+      } catch (_) {
+        image = _networkImage(url);
+      }
+    } else {
+      image = _networkImage(url);
     }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Image.network(
-        url,
-        width: double.infinity,
-        height: 180,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          height: 120,
-          color: Colors.black.withValues(alpha: 0.05),
-          child: const Center(
-            child: Icon(Icons.image_not_supported_rounded, color: Colors.grey),
+      child: GestureDetector(
+        onTap: () => _showImageViewer(context, url),
+        child: image,
+      ),
+    );
+  }
+
+  Widget _networkImage(String url) {
+    return Image.network(
+      url,
+      width: double.infinity,
+      height: 180,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => Container(
+        height: 120,
+        color: Colors.black.withValues(alpha: 0.05),
+        child: const Center(
+          child: Icon(Icons.image_not_supported_rounded, color: Colors.grey),
+        ),
+      ),
+    );
+  }
+
+  Widget _expandedImage(String url) {
+    if (url.startsWith('data:image')) {
+      try {
+        return Image.memory(
+          base64Decode(url.split(',').last),
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => const Icon(
+            Icons.image_not_supported_rounded,
+            color: Colors.white70,
+            size: 48,
+          ),
+        );
+      } catch (_) {
+        return const Icon(
+          Icons.image_not_supported_rounded,
+          color: Colors.white70,
+          size: 48,
+        );
+      }
+    }
+
+    return Image.network(
+      url,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => const Icon(
+        Icons.image_not_supported_rounded,
+        color: Colors.white70,
+        size: 48,
+      ),
+    );
+  }
+
+  void _showImageViewer(BuildContext context, String url) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (dialogContext) => Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              InteractiveViewer(child: Center(child: _expandedImage(url))),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Row(
+                  children: [
+                    IconButton.filled(
+                      tooltip: 'Download image',
+                      onPressed: () => _downloadImage(dialogContext, url),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.download_rounded),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      tooltip: 'Close image',
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _downloadImage(BuildContext context, String url) async {
+    try {
+      final imageBytes = url.startsWith('data:image')
+          ? base64Decode(url.split(',').last)
+          : await _downloadImageBytes(url);
+      final hasAccess = await Gal.hasAccess() || await Gal.requestAccess();
+      if (!hasAccess) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Photo library permission was denied.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      await Gal.putImageBytes(
+        imageBytes,
+        name: 'pawstay_image_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image saved to your photo gallery.')),
+        );
+      }
+    } on GalException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.type.message)));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not download image: $error')),
+        );
+      }
+    }
+  }
+
+  Future<Uint8List> _downloadImageBytes(String url) async {
+    final response = await http
+        .get(Uri.parse(url))
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Image download failed (${response.statusCode}).');
+    }
+    return response.bodyBytes;
   }
 
   Widget _buildDocumentWidget(
@@ -906,7 +1046,7 @@ class _MessageBubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (hasImage) ...[
-                  _buildImageWidget(imageUrl!),
+                  _buildImageWidget(context, imageUrl!),
                   if (content.isNotEmpty || hasDoc) const SizedBox(height: 8),
                 ],
                 if (hasDoc) ...[

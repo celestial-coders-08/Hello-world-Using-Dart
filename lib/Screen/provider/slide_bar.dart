@@ -5,6 +5,7 @@ import '../../theme/pawstay_theme.dart';
 import '../../widgets/profile_avatar.dart';
 import '../user/contact_support_screen.dart';
 import 'doctor.dart';
+import 'feedback.dart';
 import 'provider_profile_screen.dart';
 
 class ProviderSlideBar extends StatelessWidget {
@@ -75,6 +76,16 @@ class ProviderSlideBar extends StatelessWidget {
                         onTap: () => _open(
                           context,
                           DoctorScreen(userLookup: providerLookup),
+                        ),
+                      ),
+                      _buildItem(
+                        context,
+                        icon: Icons.feedback_outlined,
+                        title: 'Feedback',
+                        route: 'feedback',
+                        onTap: () => _open(
+                          context,
+                          FeedbackScreen(providerLookup: providerLookup),
                         ),
                       ),
                       _buildItem(
