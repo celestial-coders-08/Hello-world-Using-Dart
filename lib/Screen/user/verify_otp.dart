@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/api_config.dart';
 import '../../theme/pawstay_theme.dart';
@@ -108,6 +109,12 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
       }
 
       if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        final accessToken = decoded['access_token']?.toString();
+        if (accessToken != null && accessToken.isNotEmpty) {
+          final preferences = await SharedPreferences.getInstance();
+          await preferences.setString('access_token', accessToken);
+        }
         _showSnack('Email verified successfully.');
         await Future<void>.delayed(const Duration(milliseconds: 300));
         if (!mounted) {

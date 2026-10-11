@@ -78,6 +78,14 @@ def get_user_role(identifier: str) -> str | None:
         return None
 
 
+def conversation_has_seller(conversation: dict) -> bool:
+    return any(
+        (get_user_role(conversation.get(participant, "")) or "").strip().lower()
+        == "seller"
+        for participant in ("user_id", "contact_id")
+    )
+
+
 
 # ---------------------------------------------------------------------------
 # Create SQLite tables on startup
@@ -142,6 +150,21 @@ async def disconnect(sid):
 async def join_room(sid, data):
     conversation_id = data.get("conversation_id")
     if conversation_id:
+        try:
+            conversation_id = int(conversation_id)
+        except (TypeError, ValueError):
+            return
+        chats = load_chats_data()
+        conversation = next(
+            (
+                item
+                for item in chats.get("conversations", [])
+                if item.get("id") == conversation_id
+            ),
+            None,
+        )
+        if conversation is None or conversation_has_seller(conversation):
+            return
         room = f"conversation_{conversation_id}"
         await sio.enter_room(sid, room)
         print(f"[SOCKET] Client {sid} joined room: {room}")
@@ -157,6 +180,30 @@ async def send_message(sid, data):
         return
 
     chats = load_chats_data()
+    try:
+        conversation_id = int(conversation_id)
+    except (TypeError, ValueError):
+        return
+    conversation = next(
+        (
+            item
+            for item in chats.get("conversations", [])
+            if item.get("id") == conversation_id
+        ),
+        None,
+    )
+    participant_aliases = (
+        get_user_aliases(conversation.get("user_id", ""))
+        | get_user_aliases(conversation.get("contact_id", ""))
+        if conversation is not None
+        else set()
+    )
+    if (
+        conversation is None
+        or conversation_has_seller(conversation)
+        or not get_user_aliases(str(sender_id)).intersection(participant_aliases)
+    ):
+        return
     messages = chats.get("messages", [])
     new_id = max([m.get("id", 0) for m in messages], default=0) + 1
     now_iso = datetime.now().isoformat()
@@ -221,6 +268,7 @@ def list_conversations(user_id: str):
     user_convs = [
         c for c in conversations
         if c.get("user_id") in my_aliases or c.get("contact_id") in my_aliases
+        if not conversation_has_seller(c)
     ]
     user_convs.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
 
@@ -281,12 +329,17 @@ def create_or_get_conversation(payload: ConversationCreate):
     """
     Find existing conversation or create a new one in chats.json with alias matching
     """
-    allowed_contact_roles = {"pet service", "service provider", "seller"}
+    allowed_contact_roles = {"pet service", "service provider"}
     contact_role = get_user_role(payload.contact_id)
     if contact_role is None or contact_role.strip().lower() not in allowed_contact_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can contact only service providers and sellers.",
+            detail="You can contact only service providers.",
+        )
+    if (get_user_role(payload.user_id) or "").strip().lower() == "seller":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seller accounts cannot start chats with marketplace users.",
         )
 
     chats = load_chats_data()
@@ -325,6 +378,21 @@ def get_messages(conversation_id: int):
     Return all messages in a conversation from chats.json
     """
     chats = load_chats_data()
+    conversation = next(
+        (
+            item
+            for item in chats.get("conversations", [])
+            if item.get("id") == conversation_id
+        ),
+        None,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if conversation_has_seller(conversation):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chats with sellers are not available.",
+        )
     messages = chats.get("messages", [])
 
     conv_msgs = [m for m in messages if m.get("conversation_id") == conversation_id]
@@ -337,6 +405,30 @@ async def send_message_rest(conversation_id: int, payload: MessageCreate):
     Send a message via REST endpoint and emit Socket.IO notification
     """
     chats = load_chats_data()
+    conversation = next(
+        (
+            item
+            for item in chats.get("conversations", [])
+            if item.get("id") == conversation_id
+        ),
+        None,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if conversation_has_seller(conversation):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chats with sellers are not available.",
+        )
+    participant_aliases = (
+        get_user_aliases(conversation.get("user_id", ""))
+        | get_user_aliases(conversation.get("contact_id", ""))
+    )
+    if not get_user_aliases(payload.sender_id).intersection(participant_aliases):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only conversation participants can send messages.",
+        )
     messages = chats.get("messages", [])
 
     new_id = max([m.get("id", 0) for m in messages], default=0) + 1
@@ -373,6 +465,21 @@ def mark_messages_read(conversation_id: int, user_id: str):
     Mark all messages in a conversation from other users as read in chats.json
     """
     chats = load_chats_data()
+    conversation = next(
+        (
+            item
+            for item in chats.get("conversations", [])
+            if item.get("id") == conversation_id
+        ),
+        None,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if conversation_has_seller(conversation):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chats with sellers are not available.",
+        )
     messages = chats.get("messages", [])
     my_aliases = get_user_aliases(user_id)
 

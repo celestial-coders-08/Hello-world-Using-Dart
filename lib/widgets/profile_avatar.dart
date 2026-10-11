@@ -61,7 +61,7 @@ class ProfileAvatar extends StatelessWidget {
             width: radius * 2,
             height: radius * 2,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback(),
+            errorBuilder: (context, error, _) => fallback(),
           ),
         ),
       );
@@ -72,7 +72,7 @@ class ProfileAvatar extends StatelessWidget {
         radius: radius,
         backgroundColor: fallbackColor,
         backgroundImage: NetworkImage(value),
-        onBackgroundImageError: (_, __) {},
+        onBackgroundImageError: (exception, _) {},
       );
     }
 

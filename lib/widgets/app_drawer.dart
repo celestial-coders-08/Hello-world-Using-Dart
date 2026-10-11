@@ -8,6 +8,7 @@ import '../Screen/user/profile_screen.dart';
 import '../Screen/user/settings_screen.dart';
 import '../Screen/user/feedback_screen.dart';
 import '../Screen/user/contact_support_screen.dart';
+import '../Screen/user/your_orders_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final String? userLookup;
@@ -215,6 +216,23 @@ class AppDrawer extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => FoodScreen(userLookup: userLookup),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                _buildDrawerItem(
+                  context: context,
+                  icon: Icons.local_shipping_outlined,
+                  title: 'Your Orders',
+                  isSelected: activeRoute == 'orders',
+                  onTap: () {
+                    Navigator.pop(context);
+                    if (activeRoute != 'orders') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const YourOrdersScreen(),
                         ),
                       );
                     }

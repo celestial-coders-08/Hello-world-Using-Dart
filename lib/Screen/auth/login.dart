@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme/pawstay_theme.dart';
 import '../../config/api_config.dart';
 import 'signup.dart';
@@ -92,6 +93,16 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
+        final accessToken = decoded['access_token']?.toString();
+        if (accessToken == null || accessToken.isEmpty) {
+          _showSnack(
+            'Login succeeded but the secure session could not be created.',
+            isError: true,
+          );
+          return;
+        }
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.setString('access_token', accessToken);
         _showSnack(decoded['message'] ?? 'Login successful!');
         String? role;
         final lookup = _emailController.text.trim();

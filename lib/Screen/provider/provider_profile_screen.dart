@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
 import '../auth/login.dart';
@@ -32,7 +33,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   String _displayName = 'Service Provider';
   String _location = 'PawStay Verified';
-  String _rating = '4.9 (184 reviews)';
+  final String _rating = '4.9 (184 reviews)';
   String? _profileImageBase64;
   int _charCount = 0;
 
@@ -397,7 +398,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () {
+                        onPressed: () async {
+                          final preferences =
+                              await SharedPreferences.getInstance();
+                          await preferences.remove('access_token');
                           Navigator.of(context).pushAndRemoveUntil(
                             MaterialPageRoute(
                               builder: (_) => const LoginScreen(),
@@ -454,7 +458,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                         ? Image.memory(
                             base64Decode(_profileImageBase64!),
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Center(
+                            errorBuilder: (context, error, stack) => Center(
                               child: Text(
                                 _displayName.isNotEmpty
                                     ? _displayName[0].toUpperCase()
@@ -966,8 +970,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                   validator: (val) {
-                    if (val == null || val.trim().isEmpty)
+                    if (val == null || val.trim().isEmpty) {
                       return 'Description cannot be empty';
+                    }
                     return null;
                   },
                 ),

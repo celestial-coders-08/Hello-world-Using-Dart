@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/api_config.dart';
 import '../../theme/pawstay_theme.dart';
@@ -263,6 +264,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             if (response.statusCode == 200) {
                               Navigator.of(dialogContext).pop();
                               _showSnack('Account deleted successfully.');
+                              final preferences =
+                                  await SharedPreferences.getInstance();
+                              await preferences.remove('access_token');
                               Navigator.of(context).pushAndRemoveUntil(
                                 MaterialPageRoute(
                                   builder: (_) => const LoginScreen(),
@@ -520,7 +524,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () {
+                      onPressed: () async {
+                        final preferences =
+                            await SharedPreferences.getInstance();
+                        await preferences.remove('access_token');
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(
                             builder: (_) => const LoginScreen(),

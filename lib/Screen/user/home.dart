@@ -14,6 +14,7 @@ import 'shop_screen.dart';
 import 'doctor_screen.dart';
 import 'food_screen.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/animated_ai_nav_icon.dart';
 import '../../models/pet_storage.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -117,163 +118,174 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDesktop = size.width > 768;
     final colors = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: colors.surface,
-      drawer: AppDrawer(userLookup: widget.userLookup, activeRoute: 'home'),
-      appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
-          ? null
-          : AppBar(
-              backgroundColor: colors.surface,
-              elevation: 0,
-              centerTitle: true,
-              leading: Builder(
-                builder: (context) => IconButton(
-                  icon: Icon(
-                    Icons.menu_rounded,
-                    color: colors.onSurfaceVariant,
+    return PopScope<void>(
+      canPop: _currentNavIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _currentNavIndex != 0) {
+          setState(() => _currentNavIndex = 0);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: colors.surface,
+        drawer: AppDrawer(userLookup: widget.userLookup, activeRoute: 'home'),
+        appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
+            ? null
+            : AppBar(
+                backgroundColor: colors.surface,
+                elevation: 0,
+                centerTitle: true,
+                leading: Builder(
+                  builder: (context) => IconButton(
+                    icon: Icon(
+                      Icons.menu_rounded,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
                   ),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
                 ),
-              ),
-              title: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.pets, color: PawStayTheme.primary, size: 22),
-                  const SizedBox(width: 8),
-                  Text(
-                    'PawStay',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                title: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.pets,
                       color: PawStayTheme.primary,
-                      letterSpacing: -0.5,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'PawStay',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: PawStayTheme.primary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  GestureDetector(
+                    onTap: () {
+                      if (widget.userLookup == null ||
+                          widget.userLookup!.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Please log in again to open your profile.',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white,
+                              ),
+                            ),
+                            backgroundColor: PawStayTheme.error,
+                          ),
+                        );
+                        return;
+                      }
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ProfileScreen(userLookup: widget.userLookup!),
+                        ),
+                      ).then((_) => _fetchUserProfile());
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: _userProfileImageBase64 != null
+                          ? CircleAvatar(
+                              radius: 20,
+                              backgroundImage: MemoryImage(
+                                base64Decode(_userProfileImageBase64!),
+                              ),
+                            )
+                          : Icon(
+                              Icons.account_circle_outlined,
+                              color: colors.onSurfaceVariant,
+                              size: 28,
+                            ),
                     ),
                   ),
                 ],
               ),
-              actions: [
-                GestureDetector(
-                  onTap: () {
-                    if (widget.userLookup == null ||
-                        widget.userLookup!.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Please log in again to open your profile.',
-                            style: GoogleFonts.plusJakartaSans(
-                              color: Colors.white,
-                            ),
-                          ),
-                          backgroundColor: PawStayTheme.error,
-                        ),
-                      );
-                      return;
-                    }
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            ProfileScreen(userLookup: widget.userLookup!),
-                      ),
-                    ).then((_) => _fetchUserProfile());
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: _userProfileImageBase64 != null
-                        ? CircleAvatar(
-                            radius: 20,
-                            backgroundImage: MemoryImage(
-                              base64Decode(_userProfileImageBase64!),
-                            ),
-                          )
-                        : Icon(
-                            Icons.account_circle_outlined,
-                            color: colors.onSurfaceVariant,
-                            size: 28,
-                          ),
-                  ),
-                ),
-              ],
+        body: IndexedStack(
+          index: _currentNavIndex,
+          children: [
+            _buildDashboard(isDesktop),
+            ChatScreen(
+              userLookup: widget.userLookup,
+              onBackPressed: () => setState(() => _currentNavIndex = 0),
             ),
-      body: IndexedStack(
-        index: _currentNavIndex,
-        children: [
-          _buildDashboard(isDesktop),
-          ChatScreen(
-            userLookup: widget.userLookup,
-            onBackPressed: () => setState(() => _currentNavIndex = 0),
-          ),
-          ShopScreen(userLookup: widget.userLookup),
-          const Center(child: Text('AI Assistant coming soon')),
-        ],
-      ),
-      // Bottom Navigation bar for mobile view with active tabs
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: colors.surfaceContainer,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              offset: const Offset(0, -4),
-              blurRadius: 16,
-            ),
+            ShopScreen(userLookup: widget.userLookup),
+            const Center(child: Text('AI Assistant coming soon')),
           ],
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentNavIndex,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: colors.surfaceContainer,
-          selectedItemColor: PawStayTheme.primary,
-          unselectedItemColor: colors.onSurfaceVariant,
-          selectedLabelStyle: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.bold,
-            fontSize: 11,
+        // Bottom Navigation bar for mobile view with active tabs
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: colors.surfaceContainer,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                offset: const Offset(0, -4),
+                blurRadius: 16,
+              ),
+            ],
           ),
-          unselectedLabelStyle: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.w500,
-            fontSize: 11,
-          ),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_rounded),
-              label: 'Home',
+          child: BottomNavigationBar(
+            currentIndex: _currentNavIndex,
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: colors.surfaceContainer,
+            selectedItemColor: PawStayTheme.primary,
+            unselectedItemColor: colors.onSurfaceVariant,
+            selectedLabelStyle: GoogleFonts.plusJakartaSans(
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline_rounded),
-              activeIcon: Icon(Icons.chat_bubble_rounded),
-              label: 'Chat',
+            unselectedLabelStyle: GoogleFonts.plusJakartaSans(
+              fontWeight: FontWeight.w500,
+              fontSize: 11,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_bag_outlined),
-              activeIcon: Icon(Icons.shopping_bag_rounded),
-              label: 'Shop',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.android_outlined),
-              activeIcon: Icon(Icons.android_rounded),
-              label: 'AI',
-            ),
-          ],
-          onTap: (index) {
-            setState(() {
-              _currentNavIndex = index;
-            });
-            if (index == 3) {
-              // AI Agent — coming soon
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Coming soon: AI Assistant',
-                    style: GoogleFonts.plusJakartaSans(color: Colors.white),
+            items: [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.chat_bubble_outline_rounded),
+                activeIcon: Icon(Icons.chat_bubble_rounded),
+                label: 'Chat',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.shopping_bag_outlined),
+                activeIcon: Icon(Icons.shopping_bag_rounded),
+                label: 'Shop',
+              ),
+              BottomNavigationBarItem(
+                icon: const AnimatedAiNavIcon(),
+                label: 'AI',
+              ),
+            ],
+            onTap: (index) {
+              setState(() {
+                _currentNavIndex = index;
+              });
+              if (index == 3) {
+                // AI Agent — coming soon
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Coming soon: AI Assistant',
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                    ),
+                    backgroundColor: PawStayTheme.primary,
+                    duration: const Duration(milliseconds: 700),
                   ),
-                  backgroundColor: PawStayTheme.primary,
-                  duration: const Duration(milliseconds: 700),
-                ),
-              );
-            }
-          },
+                );
+              }
+            },
+          ),
         ),
       ),
     );

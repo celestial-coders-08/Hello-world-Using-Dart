@@ -11,6 +11,7 @@ import 'doctor.dart';
 import 'provider_profile_screen.dart';
 import 'slide_bar.dart';
 import 'your_rating.dart';
+import '../../widgets/animated_ai_nav_icon.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
   final String? providerLookup;
@@ -334,7 +335,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 userLookup: widget.providerLookup,
                 onBackPressed: () => setState(() => _currentNavIndex = 0),
               ),
-              ShopScreen(userLookup: widget.providerLookup),
+              ShopScreen(
+                userLookup: widget.providerLookup,
+                isProvider: true,
+              ),
               const Center(child: Text('AI Assistant coming soon')),
             ],
           ),
@@ -363,7 +367,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 fontWeight: FontWeight.w500,
                 fontSize: 11,
               ),
-              items: const [
+              items: [
                 BottomNavigationBarItem(
                   icon: Icon(Icons.home_outlined),
                   activeIcon: Icon(Icons.home_rounded),
@@ -380,8 +384,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                   label: 'Shop',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.smart_toy_outlined),
-                  activeIcon: Icon(Icons.smart_toy_rounded),
+                  icon: const AnimatedAiNavIcon(),
                   label: 'AI',
                 ),
               ],

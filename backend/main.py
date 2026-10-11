@@ -43,6 +43,7 @@ from Email_Veriication.otp_service import (
     send_password_reset_email,
 )
 from service_provider.provider_db import get_profile as get_provider_db_profile
+from payment.auth import issue_access_token
 
 load_dotenv()
 
@@ -275,6 +276,7 @@ class ContactRequest(BaseModel):
 class MessageResponse(BaseModel):
     success: bool
     message: str
+    access_token: str | None = None
 
 
 class PetCreateRequest(BaseModel):
@@ -408,6 +410,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     return MessageResponse(
         success=True,
         message=f"Login successful! Welcome back, {user.full_name}.",
+        access_token=issue_access_token(user.id, user.email),
     )
 
 
@@ -538,10 +541,10 @@ def get_provider_reviews(provider_lookup: str, db: Session = Depends(get_db)):
 def search_users(q: str = "", db: Session = Depends(get_db)):
     """
     Search users globally by name or username. 
-    Only returns users who have the role: Seller, Service provider, or Doctor.
+    Only returns users who have the role: Service provider or Doctor.
     """
     q_str = q.strip()
-    allowed_roles = ["Seller", "Service provider", "Doctor"]
+    allowed_roles = ["Service provider", "Doctor"]
     
     query = db.query(User).filter(User.role.in_(allowed_roles))
     if q_str:
@@ -567,13 +570,13 @@ def search_users(q: str = "", db: Session = Depends(get_db)):
 @app.get("/users/chat-candidates", response_model=list[ChatCandidateResponse], tags=["Profile"])
 def get_chat_candidates(user_id: str = "", db: Session = Depends(get_db)):
     """
-    Get service providers and sellers,
+    Get service providers,
     filtered based on the user's city only.
     """
     user_id_str = user_id.strip()
     current_user = get_user_by_lookup(db, user_id_str) if user_id_str else None
     
-    allowed_roles = ["Service provider", "Pet Service", "Seller"]
+    allowed_roles = ["Service provider", "Pet Service"]
     
     query = db.query(User).filter(User.role.in_(allowed_roles))
     
@@ -759,7 +762,17 @@ def verify_otp(payload: OtpVerifyRequest, db: Session = Depends(get_db)):
         user.is_verified = True
         db.commit()
 
-    return MessageResponse(success=True, message=message)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Verified account was not found.",
+        )
+
+    return MessageResponse(
+        success=True,
+        message=message,
+        access_token=issue_access_token(user.id, user.email),
+    )
 
 
 @app.post("/resend-otp", response_model=MessageResponse, tags=["Auth"])

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../theme/pawstay_theme.dart';
 import '../../widgets/profile_avatar.dart';
 import '../user/contact_support_screen.dart';
+import '../user/your_orders_screen.dart';
 import 'doctor.dart';
 import 'feedback.dart';
 import 'provider_profile_screen.dart';
@@ -56,6 +57,16 @@ class ProviderSlideBar extends StatelessWidget {
                         onTap: () => _open(
                           context,
                           ProviderProfileScreen(providerLookup: providerLookup),
+                        ),
+                      ),
+                      _buildItem(
+                        context,
+                        icon: Icons.local_shipping_outlined,
+                        title: 'Your Orders',
+                        route: 'orders',
+                        onTap: () => _open(
+                          context,
+                          const YourOrdersScreen(),
                         ),
                       ),
                       _buildItem(

@@ -183,15 +183,18 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                                     child: Text(
                                       order['order_code']?.toString() ??
                                           'Order #$orderId',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                     ),
                                   ),
                                   Text(
-                                    _currency(order['total_amount'] as num? ?? 0),
+                                    _currency(
+                                      order['total_amount'] as num? ?? 0,
+                                    ),
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
@@ -205,10 +208,7 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                               const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  const Icon(
-                                    Icons.payments_outlined,
-                                    size: 18,
-                                  ),
+                                  const Icon(Icons.payments_outlined, size: 18),
                                   const SizedBox(width: 8),
                                   const Text('Payment'),
                                   const SizedBox(width: 8),
@@ -230,6 +230,23 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                                     order['customer_name']?.toString() ??
                                         'Customer',
                                   ),
+                                  if ((order['customer_email']?.toString() ??
+                                          '')
+                                      .isNotEmpty)
+                                    _detail(
+                                      context,
+                                      Icons.email_outlined,
+                                      'Email',
+                                      order['customer_email'].toString(),
+                                    ),
+                                  if ((order['product_name']?.toString() ?? '')
+                                      .isNotEmpty)
+                                    _detail(
+                                      context,
+                                      Icons.shopping_bag_outlined,
+                                      'Product',
+                                      order['product_name'].toString(),
+                                    ),
                                   _detail(
                                     context,
                                     Icons.pets,

@@ -47,6 +47,9 @@ dependencies:
   socket_io_client: ^2.0.3
   shared_preferences: ^2.5.3
   gal: ^2.3.3
+  camera: ^0.12.1
+  google_mlkit_face_detection: ^0.15.1
+  webview_flutter: ^4.14.1
 
 
 dev_dependencies:
@@ -74,6 +77,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - animated_svg.html
+    - .env
 
   # To add assets to your application, add an assets section, like this:
   # assets:

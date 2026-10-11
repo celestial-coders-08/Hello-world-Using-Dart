@@ -183,9 +183,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       'conversation_id': widget.conversationId,
       'sender_id': widget.userId,
       'content': content,
-      if (imageUrl != null) 'image_url': imageUrl,
-      if (documentUrl != null) 'document_url': documentUrl,
-      if (documentName != null) 'document_name': documentName,
+      'image_url': imageUrl,
+      'document_url': documentUrl,
+      'document_name': documentName,
     };
 
     final isSocketConnected = _socket != null && (_socket!.connected == true);

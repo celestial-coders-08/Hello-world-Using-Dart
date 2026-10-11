@@ -58,20 +58,78 @@ def connection() -> Iterator[sqlite3.Connection]:
                 quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
                 order_status TEXT NOT NULL DEFAULT 'Pending',
                 payment_status TEXT NOT NULL DEFAULT 'Pending',
+                buyer_user_id INTEGER,
+                customer_email TEXT NOT NULL DEFAULT '',
+                product_id INTEGER,
+                product_name TEXT NOT NULL DEFAULT '',
+                razorpay_order_id TEXT,
+                razorpay_payment_id TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (seller_lookup, order_code)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS marketplace_payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_code TEXT NOT NULL UNIQUE,
+                product_id INTEGER NOT NULL,
+                seller_lookup TEXT NOT NULL,
+                buyer_user_id INTEGER NOT NULL,
+                buyer_email TEXT NOT NULL,
+                buyer_name TEXT NOT NULL,
+                product_name TEXT NOT NULL DEFAULT '',
+                razorpay_order_id TEXT NOT NULL UNIQUE,
+                razorpay_payment_id TEXT UNIQUE,
+                amount_paise INTEGER NOT NULL CHECK (amount_paise > 0),
+                payment_status TEXT NOT NULL DEFAULT 'Pending',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS marketplace_payment_items (
+                payment_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                seller_lookup TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                amount_paise INTEGER NOT NULL CHECK (amount_paise > 0),
+                PRIMARY KEY (payment_id, product_id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS seller_verifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seller_lookup TEXT NOT NULL UNIQUE,
+                is_shop_owner INTEGER NOT NULL DEFAULT 0,
+                shop_proof_url TEXT DEFAULT '',
+                aadhaar_url TEXT NOT NULL DEFAULT '',
+                face_images TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'Approved',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
         product_columns = {
             row["name"] for row in db.execute("PRAGMA table_info(seller_products)")
         }
+        stock_column_missing = "stock_quantity" not in product_columns
         product_migrations = {
             "listing_type": "TEXT NOT NULL DEFAULT 'other'",
             "animal_type": "TEXT NOT NULL DEFAULT ''",
             "breed": "TEXT NOT NULL DEFAULT ''",
             "suitable_for": "TEXT NOT NULL DEFAULT '[]'",
             "image_urls": "TEXT NOT NULL DEFAULT '[]'",
+            "stock_quantity": "INTEGER NOT NULL DEFAULT 1 CHECK (stock_quantity >= 0)",
+            "has_health_issue": "INTEGER NOT NULL DEFAULT 0",
+            "health_issue": "TEXT NOT NULL DEFAULT ''",
         }
         for name, definition in product_migrations.items():
             if name not in product_columns:
@@ -79,18 +137,116 @@ def connection() -> Iterator[sqlite3.Connection]:
                     f"ALTER TABLE seller_products ADD COLUMN {name} {definition}"
                 )
 
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS seller_schema_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        stock_migration = db.execute(
+            """
+            SELECT value FROM seller_schema_metadata
+            WHERE key = 'stock_availability_v1'
+            """
+        ).fetchone()
+        if stock_migration is None:
+            if not stock_column_missing:
+                db.execute(
+                    "UPDATE seller_products SET stock_quantity = 1 "
+                    "WHERE stock_quantity = 0"
+                )
+            db.execute(
+                """
+                INSERT INTO seller_schema_metadata (key, value)
+                VALUES ('stock_availability_v1', 'complete')
+                """
+            )
+
         order_columns = {
             row["name"] for row in db.execute("PRAGMA table_info(seller_orders)")
         }
-        if "payment_status" not in order_columns:
+        order_migrations = {
+            "payment_status": "TEXT NOT NULL DEFAULT 'Pending'",
+            "buyer_user_id": "INTEGER",
+            "customer_email": "TEXT NOT NULL DEFAULT ''",
+            "product_id": "INTEGER",
+            "product_name": "TEXT NOT NULL DEFAULT ''",
+            "razorpay_order_id": "TEXT",
+            "razorpay_payment_id": "TEXT",
+        }
+        for name, definition in order_migrations.items():
+            if name not in order_columns:
+                db.execute(
+                    f"ALTER TABLE seller_orders ADD COLUMN {name} {definition}"
+                )
+        payment_columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(marketplace_payments)")
+        }
+        if "product_name" not in payment_columns:
             db.execute(
-                "ALTER TABLE seller_orders ADD COLUMN payment_status "
-                "TEXT NOT NULL DEFAULT 'Pending'"
+                "ALTER TABLE marketplace_payments ADD COLUMN product_name "
+                "TEXT NOT NULL DEFAULT ''"
             )
         db.commit()
         yield db
     finally:
         db.close()
+
+
+def create_verification(seller_lookup: str, data: dict) -> dict:
+    with connection() as db:
+        db.execute(
+            """
+            INSERT INTO seller_verifications (
+                seller_lookup, is_shop_owner, shop_proof_url, aadhaar_url,
+                face_images, status
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(seller_lookup) DO UPDATE SET
+                is_shop_owner = excluded.is_shop_owner,
+                shop_proof_url = excluded.shop_proof_url,
+                aadhaar_url = excluded.aadhaar_url,
+                face_images = excluded.face_images,
+                status = excluded.status,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                seller_lookup,
+                1 if data.get("is_shop_owner") else 0,
+                data.get("shop_proof_url", ""),
+                data.get("aadhaar_url", ""),
+                json.dumps(data.get("face_images", [])),
+                data.get("status", "Approved"),
+            ),
+        )
+        db.commit()
+        row = db.execute(
+            "SELECT * FROM seller_verifications WHERE seller_lookup = ?",
+            (seller_lookup,),
+        ).fetchone()
+    return _decode_verification(dict(row))
+
+
+def get_verification(seller_lookup: str) -> dict | None:
+    with connection() as db:
+        row = db.execute(
+            "SELECT * FROM seller_verifications WHERE seller_lookup = ?",
+            (seller_lookup,),
+        ).fetchone()
+    if not row:
+        return None
+    return _decode_verification(dict(row))
+
+
+def _decode_verification(data: dict) -> dict:
+    data["is_shop_owner"] = bool(data.get("is_shop_owner", 0))
+    try:
+        data["face_images"] = json.loads(data.get("face_images") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        data["face_images"] = []
+    return data
 
 
 def initialize_database() -> None:
@@ -118,8 +274,9 @@ def create_product(seller_lookup: str, product: dict) -> dict:
             INSERT INTO seller_products (
                 seller_lookup, listing_type, name, subhead_tag, offer_tag, brand,
                 animal_type, breed, suitable_for, price, mrp, sku, category_id,
-                pet_type, description, image_url, image_urls
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pet_type, description, image_url, image_urls, stock_quantity,
+                has_health_issue, health_issue
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 seller_lookup,
@@ -139,6 +296,9 @@ def create_product(seller_lookup: str, product: dict) -> dict:
                 product.get("description", ""),
                 product.get("image_url", ""),
                 json.dumps(product.get("image_urls", [])),
+                product.get("stock_quantity", 1),
+                1 if product.get("has_health_issue") else 0,
+                product.get("health_issue", ""),
             ),
         )
         db.commit()
@@ -148,8 +308,47 @@ def create_product(seller_lookup: str, product: dict) -> dict:
     return _decode_product(dict(row))
 
 
+def update_product(
+    seller_lookup: str,
+    product_id: int,
+    *,
+    description: str,
+    price: float,
+    stock_quantity: int,
+) -> dict | None:
+    with connection() as db:
+        cursor = db.execute(
+            """
+            UPDATE seller_products
+            SET description = ?, price = ?, mrp = MAX(mrp, ?),
+                stock_quantity = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND seller_lookup = ?
+            """,
+            (
+                description,
+                price,
+                price,
+                stock_quantity,
+                product_id,
+                seller_lookup,
+            ),
+        )
+        if cursor.rowcount == 0:
+            db.commit()
+            return None
+        db.commit()
+        row = db.execute(
+            """
+            SELECT * FROM seller_products
+            WHERE id = ? AND seller_lookup = ?
+            """,
+            (product_id, seller_lookup),
+        ).fetchone()
+    return _decode_product(dict(row))
+
+
 def _decode_product(product: dict) -> dict:
-    product.pop("stock_quantity", None)
     try:
         product["image_urls"] = json.loads(product.get("image_urls") or "[]")
         product["suitable_for"] = json.loads(product.get("suitable_for") or "[]")
@@ -158,6 +357,7 @@ def _decode_product(product: dict) -> dict:
         product["suitable_for"] = []
     if not product["image_urls"] and product.get("image_url"):
         product["image_urls"] = [product["image_url"]]
+    product["in_stock"] = int(product.get("stock_quantity") or 0) > 0
     return product
 
 
