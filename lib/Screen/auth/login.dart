@@ -130,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen>
         if (!mounted) return;
 
         final isAdmin =
-            role?.toLowerCase() == 'admin' ||
+            role?.trim().toLowerCase() == 'admin' ||
             lookup.toLowerCase() == 'admin@pawstay.com' ||
             lookup.toLowerCase() == 'admin';
 

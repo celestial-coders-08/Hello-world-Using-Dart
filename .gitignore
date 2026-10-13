@@ -47,9 +47,10 @@ app.*.map.json
 .env
 pawstay.db
 backend/service_provider/provider.db
+backend/seller/seller.db
+backend/seller/uploads/
 venv/
 build/
 build_old/
 web/
 animated_svg.html
-
