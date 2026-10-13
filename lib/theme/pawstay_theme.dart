@@ -304,3 +304,54 @@ class PawStayTheme {
     );
   }
 }
+
+/// Responsive helper utilities ensuring layouts scale gracefully across
+/// varied mobile devices (iPhone, Vivo, Samsung, etc.) and prevent RenderFlex overflows.
+class PawStayResponsive {
+  PawStayResponsive._();
+
+  static double width(BuildContext context) => MediaQuery.sizeOf(context).width;
+  static double height(BuildContext context) =>
+      MediaQuery.sizeOf(context).height;
+
+  /// True if device width is compact (e.g. iPhone SE, compact Vivo / Samsung <= 360px).
+  static bool isCompact(BuildContext context) => width(context) <= 360.0;
+
+  /// True if device width is standard mobile (width < 600px).
+  static bool isMobile(BuildContext context) => width(context) < 600.0;
+
+  /// True if device is tablet or wider (>= 600px).
+  static bool isTablet(BuildContext context) => width(context) >= 600.0;
+
+  /// Returns responsive horizontal padding for views.
+  static double horizontalPadding(BuildContext context) {
+    final w = width(context);
+    if (w <= 360) return 14.0;
+    if (w < 600) return PawStayTheme.marginMobile;
+    return PawStayTheme.marginDesktop;
+  }
+
+  /// Calculates dynamic childAspectRatio for 2-column grids on varied phone sizes.
+  static double gridAspectRatio({
+    required BuildContext context,
+    required double baseRatio,
+    double compactRatio = 0.58,
+    double tabletRatio = 0.75,
+  }) {
+    final w = width(context);
+    if (w <= 360) return compactRatio;
+    if (w >= 600) return tabletRatio;
+    return baseRatio;
+  }
+
+  /// Scales a base dimension proportionally between bounds based on standard reference width (390px).
+  static double scale(
+    BuildContext context,
+    double base, {
+    double min = 0.85,
+    double max = 1.15,
+  }) {
+    final factor = (width(context) / 390.0).clamp(min, max);
+    return base * factor;
+  }
+}

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/seller_api_service.dart';
+import '../../theme/pawstay_theme.dart';
 import '../../widgets/product_detail_sheet.dart';
 
 class SellerProductsScreen extends StatefulWidget {
@@ -542,9 +543,13 @@ class _SellerProductsScreenState extends State<SellerProductsScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: visibleProducts.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.58,
+                childAspectRatio: PawStayResponsive.gridAspectRatio(
+                  context: context,
+                  baseRatio: 0.58,
+                  compactRatio: 0.52,
+                ),
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
@@ -942,7 +947,7 @@ class _ListingCard extends StatelessWidget {
                           width: double.infinity,
                           height: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _imagePlaceholder(type),
+                          errorBuilder: (_, _, _) => _imagePlaceholder(type),
                         )
                       : _imagePlaceholder(type),
                 ),

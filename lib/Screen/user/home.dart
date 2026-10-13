@@ -296,8 +296,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PawStayTheme.marginMobile,
+        padding: EdgeInsets.symmetric(
+          horizontal: PawStayResponsive.horizontalPadding(context),
           vertical: 24,
         ),
         child: Column(
@@ -309,13 +309,15 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      '$_greeting, $_displayName!',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: isDesktop ? 36 : 28,
-                        fontWeight: FontWeight.bold,
-                        color: colors.onSurface,
-                        letterSpacing: -0.8,
+                    Flexible(
+                      child: Text(
+                        '$_greeting, $_displayName!',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: isDesktop ? 36 : 28,
+                          fontWeight: FontWeight.bold,
+                          color: colors.onSurface,
+                          letterSpacing: -0.8,
+                        ),
                       ),
                     ),
                     if (_isLoadingUser) ...[
@@ -440,7 +442,12 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisCount: isDesktop ? 3 : 2,
               mainAxisSpacing: 16,
               crossAxisSpacing: 16,
-              childAspectRatio: 1.25,
+              childAspectRatio: PawStayResponsive.gridAspectRatio(
+                context: context,
+                baseRatio: isDesktop ? 1.4 : 1.25,
+                compactRatio: 1.15,
+                tabletRatio: 1.35,
+              ),
               children: [
                 _buildBentoItem(
                   title: 'Your pet',
@@ -705,44 +712,56 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 1.0,
           ),
         ),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(PawStayResponsive.isCompact(context) ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             // Icon container badge
             Container(
-              width: 44,
-              height: 44,
+              width: PawStayResponsive.isCompact(context) ? 38 : 44,
+              height: PawStayResponsive.isCompact(context) ? 38 : 44,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: backgroundColor,
               ),
-              child: Center(child: Icon(icon, color: iconColor, size: 22)),
+              child: Center(
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: PawStayResponsive.isCompact(context) ? 19 : 22,
+                ),
+              ),
             ),
 
             // Labels
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    color: PawStayTheme.onSurface,
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.bold,
+                      fontSize: PawStayResponsive.isCompact(context) ? 14 : 15,
+                      color: PawStayTheme.onSurface,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    color: PawStayTheme.onSurfaceVariant,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      color: PawStayTheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),

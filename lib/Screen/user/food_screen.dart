@@ -221,10 +221,15 @@ class _FoodScreenState extends State<FoodScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: products.length,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: MediaQuery.of(context).size.width > 600
+                  crossAxisCount: PawStayResponsive.width(context) > 600
                       ? 3
                       : 2,
-                  childAspectRatio: 0.62,
+                  childAspectRatio: PawStayResponsive.gridAspectRatio(
+                    context: context,
+                    baseRatio: 0.62,
+                    compactRatio: 0.54,
+                    tabletRatio: 0.70,
+                  ),
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),

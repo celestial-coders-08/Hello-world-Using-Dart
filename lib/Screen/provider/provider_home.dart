@@ -335,10 +335,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 userLookup: widget.providerLookup,
                 onBackPressed: () => setState(() => _currentNavIndex = 0),
               ),
-              ShopScreen(
-                userLookup: widget.providerLookup,
-                isProvider: true,
-              ),
+              ShopScreen(userLookup: widget.providerLookup, isProvider: true),
               const Center(child: Text('AI Assistant coming soon')),
             ],
           ),
@@ -661,7 +658,11 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
             crossAxisCount: 2,
             mainAxisSpacing: 14,
             crossAxisSpacing: 14,
-            childAspectRatio: 1.35,
+            childAspectRatio: PawStayResponsive.gridAspectRatio(
+              context: context,
+              baseRatio: 1.35,
+              compactRatio: 1.18,
+            ),
             children: [
               // 1. Rating
               _buildOverviewCard(
@@ -872,39 +873,45 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           ),
           boxShadow: PawStayTheme.ambientShadow1,
         ),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(shape: BoxShape.circle, color: iconBg),
-              child: Center(child: Icon(icon, color: iconColor, size: 20)),
+              child: Center(child: Icon(icon, color: iconColor, size: 18)),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: PawStayTheme.onSurface,
+            const SizedBox(height: 6),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: PawStayTheme.onSurface,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    color: PawStayTheme.onSurfaceVariant,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      color: PawStayTheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),

@@ -399,10 +399,13 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () async {
+                          final navigator = Navigator.of(context);
                           final preferences =
                               await SharedPreferences.getInstance();
+                          if (!navigator.mounted) return;
                           await preferences.remove('access_token');
-                          Navigator.of(context).pushAndRemoveUntil(
+                          if (!navigator.mounted) return;
+                          navigator.pushAndRemoveUntil(
                             MaterialPageRoute(
                               builder: (_) => const LoginScreen(),
                             ),

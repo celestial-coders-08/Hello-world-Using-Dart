@@ -708,9 +708,9 @@ class _SellerVerificationScreenState extends State<SellerVerificationScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _stepBadge('1. Left', verified: _faceStep > 0),
+                            _stepBadge('1. Right', verified: _faceStep > 0),
                             _stepBadge('2. Front', verified: _faceStep > 1),
-                            _stepBadge('3. Right', verified: _faceStep > 2),
+                            _stepBadge('3. Left', verified: _faceStep > 2),
                           ],
                         ),
 

@@ -600,7 +600,7 @@ class _RevenueCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'Monthly payout breakdown in ₹',
+                      'Paid amount per month in ₹',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),
@@ -698,54 +698,86 @@ class _RevenueChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxRevenue = points.fold<double>(
+      0,
+      (maximum, point) => math.max(maximum, point.revenue),
+    );
+    final colors = Theme.of(context).colorScheme;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final chartWidth = math.max(constraints.maxWidth, points.length * 48.0);
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: chartWidth,
-            height: constraints.maxHeight,
-            child: Column(
-              children: [
-                Expanded(
-                  child: CustomPaint(painter: _RevenueChartPainter(points)),
-                ),
-                SizedBox(
-                  height: 24,
-                  child: Row(
-                    children: List.generate(points.length, (index) {
-                      final point = points[index];
-                      final isPeak =
-                          point.revenue > 0 &&
-                          point.revenue ==
-                              points.fold<double>(
-                                0,
-                                (maximum, item) =>
-                                    math.max(maximum, item.revenue),
-                              );
-                      return Expanded(
-                        child: Text(
-                          _monthLabel(point.date),
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                color: isPeak
-                                    ? Theme.of(context).colorScheme.onSurface
-                                    : Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                fontWeight: isPeak
-                                    ? FontWeight.w700
-                                    : FontWeight.normal,
-                              ),
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _RevenueLineChartPainter(
+                          points: points,
+                          maxRevenue: maxRevenue,
+                          gridColor: colors.outlineVariant.withValues(
+                            alpha: .45,
+                          ),
                         ),
-                      );
-                    }),
-                  ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: Row(
+                        children: points
+                            .map(
+                              (point) => Expanded(
+                                child: Tooltip(
+                                  message:
+                                      '${_monthLabel(point.date)}: ${_compactCurrency(point.revenue)} paid',
+                                  child: Container(
+                                    color: Colors.transparent,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              SizedBox(
+                height: 24,
+                child: Row(
+                  children: List.generate(points.length, (index) {
+                    final point = points[index];
+                    final isPeak =
+                        point.revenue > 0 &&
+                        point.revenue ==
+                            points.fold<double>(
+                              0,
+                              (maximum, item) =>
+                                  math.max(maximum, item.revenue),
+                            );
+                    return Expanded(
+                      child: Text(
+                        _monthLabel(point.date),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: isPeak
+                              ? Theme.of(context).colorScheme.onSurface
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: isPeak
+                              ? FontWeight.w700
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -753,75 +785,104 @@ class _RevenueChart extends StatelessWidget {
   }
 }
 
-class _RevenueChartPainter extends CustomPainter {
+class _RevenueLineChartPainter extends CustomPainter {
   final List<_RevenuePoint> points;
+  final double maxRevenue;
+  final Color gridColor;
 
-  const _RevenueChartPainter(this.points);
+  const _RevenueLineChartPainter({
+    required this.points,
+    required this.maxRevenue,
+    required this.gridColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (points.isEmpty || size.isEmpty) return;
-
-    final maxRevenue = points.fold<double>(
-      0,
-      (maximum, point) => math.max(maximum, point.revenue),
-    );
-    const axisWidth = 48.0;
-    const chartTop = 12.0;
-    const bottomPadding = 8.0;
-    final baseline = size.height - bottomPadding;
-    final chartHeight = baseline - chartTop;
-    final chartWidth = size.width - axisWidth;
-    final scaleMaximum = maxRevenue > 0 ? maxRevenue : 1.0;
-    final textStyle = const TextStyle(color: Color(0xFF77716E), fontSize: 10);
     final gridPaint = Paint()
-      ..color = const Color(0xFFF0E6E0)
+      ..color = gridColor
       ..strokeWidth = 1;
-    for (var line = 0; line <= 2; line++) {
-      final y = chartTop + chartHeight * line / 2;
-      canvas.drawLine(Offset(axisWidth, y), Offset(size.width, y), gridPaint);
-      final amount = maxRevenue * (1 - line / 2);
-      final label = TextPainter(
-        text: TextSpan(text: _compactCurrency(amount), style: textStyle),
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: axisWidth - 4);
-      label.paint(canvas, Offset(axisWidth - label.width - 6, y - 6));
+    for (var index = 0; index < 4; index++) {
+      final y = size.height * index / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
-    final barsPaint = Paint()
-      ..color = const Color(0xFFE77854)
-      ..strokeCap = StrokeCap.round;
-    final highlightPaint = Paint()
-      ..color = const Color(0xFFB94A2C)
-      ..strokeCap = StrokeCap.round;
-    final slotWidth = chartWidth / points.length;
-    final barWidth = math.min(22.0, slotWidth * .58);
-    for (var index = 0; index < points.length; index++) {
-      final point = points[index];
-      final barHeight = maxRevenue == 0
-          ? 3.0
-          : math.max(3.0, chartHeight * point.revenue / scaleMaximum);
-      final x = axisWidth + slotWidth * (index + .5);
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          x - barWidth / 2,
-          baseline - barHeight,
-          barWidth,
-          barHeight,
+    if (points.isEmpty) return;
+
+    const inset = 8.0;
+    final chartWidth = math.max(0.0, size.width - inset * 2);
+    final chartHeight = math.max(0.0, size.height - inset * 2);
+    final chartPoints = <Offset>[
+      for (var index = 0; index < points.length; index++)
+        Offset(
+          inset +
+              (points.length == 1
+                  ? chartWidth / 2
+                  : chartWidth * index / (points.length - 1)),
+          inset +
+              chartHeight *
+                  (1 -
+                      (maxRevenue == 0
+                          ? 0
+                          : points[index].revenue / maxRevenue)),
         ),
-        const Radius.circular(5),
+    ];
+
+    final linePath = Path()..moveTo(chartPoints.first.dx, chartPoints.first.dy);
+    for (var index = 1; index < chartPoints.length; index++) {
+      final previous = chartPoints[index - 1];
+      final current = chartPoints[index];
+      final middleX = (previous.dx + current.dx) / 2;
+      linePath.cubicTo(
+        middleX,
+        previous.dy,
+        middleX,
+        current.dy,
+        current.dx,
+        current.dy,
       );
-      canvas.drawRRect(
-        rect,
-        point.revenue == maxRevenue && maxRevenue > 0
-            ? highlightPaint
-            : barsPaint,
-      );
+    }
+    final areaPath = Path.from(linePath)
+      ..lineTo(chartPoints.last.dx, size.height)
+      ..lineTo(chartPoints.first.dx, size.height)
+      ..close();
+    canvas.drawPath(
+      areaPath,
+      Paint()..color = const Color(0xFFE77854).withValues(alpha: .12),
+    );
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = const Color(0xFFB94A2C)
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke,
+    );
+
+    for (var index = 0; index < chartPoints.length; index++) {
+      final isPeak = maxRevenue > 0 && points[index].revenue == maxRevenue;
+      final pointPaint = Paint()
+        ..color = points[index].revenue == 0
+            ? gridColor
+            : const Color(0xFFB94A2C);
+      canvas.drawCircle(chartPoints[index], isPeak ? 4 : 3, pointPaint);
+      if (isPeak) {
+        canvas.drawCircle(
+          chartPoints[index],
+          6,
+          Paint()
+            ..color = const Color(0xFFB94A2C).withValues(alpha: .16)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _RevenueChartPainter oldDelegate) =>
-      oldDelegate.points != points;
+  bool shouldRepaint(covariant _RevenueLineChartPainter oldDelegate) =>
+      oldDelegate.points != points ||
+      oldDelegate.maxRevenue != maxRevenue ||
+      oldDelegate.gridColor != gridColor;
 }
 
 class _TransactionsCard extends StatelessWidget {

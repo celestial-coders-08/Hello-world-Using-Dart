@@ -10,7 +10,7 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_DIR)
 
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_
@@ -18,16 +18,19 @@ from starlette.staticfiles import StaticFiles
 
 from database.db import SessionLocal
 from database.models import User
+from payment.auth import authenticated_user
 from seller.seller_db import (
     create_product,
     create_verification,
     get_analytics,
     get_verification,
     initialize_database,
+    list_verifications,
     list_orders,
     list_products,
     update_product,
     update_order_status,
+    update_verification_status,
 )
 initialize_database()
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -115,6 +118,17 @@ class ProductUpdateRequest(BaseModel):
         return self
 
 
+class SellerVerificationReviewRequest(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def allowed_status(cls, value: str) -> str:
+        if value not in {"Approved", "Rejected"}:
+            raise ValueError("Verification status must be Approved or Rejected.")
+        return value
+
+
 def require_seller(lookup: str) -> str:
     normalized = lookup.strip()
     if not normalized:
@@ -139,6 +153,26 @@ def require_seller(lookup: str) -> str:
 
     # Use the canonical username so email and username logins share one seller store.
     return seller_user.username
+
+
+def require_verified_seller(lookup: str) -> str:
+    seller_lookup = require_seller(lookup)
+    verification = get_verification(seller_lookup)
+    if not verification or verification["status"] != "Approved":
+        raise HTTPException(
+            status_code=403,
+            detail="Seller verification must be approved before creating or updating listings.",
+        )
+    return seller_lookup
+
+
+def require_admin(authorization: str | None) -> None:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Admin sign-in is required.")
+    claims = authenticated_user(authorization[7:].strip())
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@pawstay.com").strip().lower()
+    if claims["user_id"] != 999999 or claims["email"] != admin_email:
+        raise HTTPException(status_code=403, detail="Admin access is required.")
 
 
 @app.get("/")
@@ -171,7 +205,7 @@ def read_products(
 
 @app.post("/seller/products", status_code=201)
 def add_product(payload: ProductRequest):
-    seller_lookup = require_seller(payload.seller_lookup)
+    seller_lookup = require_verified_seller(payload.seller_lookup)
     product = payload.model_dump(exclude={"seller_lookup"})
     if product["sku"] is not None:
         product["sku"] = product["sku"].strip() or None
@@ -192,7 +226,7 @@ def save_product(
     payload: ProductUpdateRequest,
     seller_lookup: str = Query(min_length=1),
 ):
-    seller_lookup = require_seller(seller_lookup)
+    seller_lookup = require_verified_seller(seller_lookup)
     product = update_product(
         seller_lookup,
         product_id,
@@ -215,6 +249,67 @@ def read_seller_verification(lookup: str = Query(min_length=1)):
     record = get_verification(seller_lookup)
     if not record:
         return {"status": "Unverified", "is_shop_owner": False}
+    return record
+
+
+@app.get("/admin/seller-verifications")
+def read_admin_seller_verifications(
+    authorization: str | None = Header(default=None),
+):
+    require_admin(authorization)
+    verifications = list_verifications()
+    if not verifications:
+        return []
+
+    seller_lookups = {item["seller_lookup"] for item in verifications}
+    with SessionLocal() as db:
+        sellers = (
+            db.query(User)
+            .filter(func.lower(User.role) == "seller", User.username.in_(seller_lookups))
+            .all()
+        )
+    sellers_by_lookup = {seller.username: seller for seller in sellers}
+
+    result = []
+    for verification in verifications:
+        seller = sellers_by_lookup.get(verification["seller_lookup"])
+        if seller is None:
+            continue
+        result.append(
+            {
+                "id": seller.id,
+                "full_name": seller.full_name,
+                "username": seller.username,
+                "email": seller.email,
+                "phone_number": seller.phone_number or "",
+                "city": seller.city,
+                "state": seller.state,
+                "profile_image": seller.profile_image or "",
+                "is_shop_owner": verification["is_shop_owner"],
+                "shop_proof_url": verification["shop_proof_url"],
+                "aadhaar_url": verification["aadhaar_url"],
+                "face_images": verification["face_images"],
+                "completed_orders": get_analytics(verification["seller_lookup"])[
+                    "payments_received_count"
+                ],
+                "status": verification["status"],
+                "created_at": verification["created_at"],
+                "updated_at": verification["updated_at"],
+            }
+        )
+    return result
+
+
+@app.patch("/admin/seller-verifications/{seller_lookup}")
+def review_admin_seller_verification(
+    seller_lookup: str,
+    payload: SellerVerificationReviewRequest,
+    authorization: str | None = Header(default=None),
+):
+    require_admin(authorization)
+    record = update_verification_status(seller_lookup, payload.status)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Seller verification not found.")
     return record
 
 
@@ -269,7 +364,7 @@ async def submit_seller_verification(
             "shop_proof_url": shop_proof_url,
             "aadhaar_url": aadhaar_url,
             "face_images": face_urls,
-            "status": "Approved",
+            "status": "Pending",
         },
     )
     return record
@@ -291,7 +386,7 @@ async def add_listing(
     health_issue: str = Form(default=""),
     images: list[UploadFile] = File(default=[]),
 ):
-    canonical_lookup = require_seller(seller_lookup)
+    canonical_lookup = require_verified_seller(seller_lookup)
 
     # Check seller verification & shop owner status
     verification = get_verification(canonical_lookup)

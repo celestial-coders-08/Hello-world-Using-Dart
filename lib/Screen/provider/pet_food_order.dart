@@ -133,7 +133,7 @@ class _PetFoodOrderScreenState extends State<PetFoodOrderScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: _categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final cat = _categories[index];
                     final isSelected = _selectedCategory == cat;
@@ -197,9 +197,13 @@ class _PetFoodOrderScreenState extends State<PetFoodOrderScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: filtered.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 0.65,
+                    childAspectRatio: PawStayResponsive.gridAspectRatio(
+                      context: context,
+                      baseRatio: 0.65,
+                      compactRatio: 0.58,
+                    ),
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                   ),
@@ -250,12 +254,11 @@ class _PetFoodOrderScreenState extends State<PetFoodOrderScreen> {
                                       ? Image.network(
                                           SellerApiService.mediaUrl(imageUrl),
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              const Icon(
-                                                Icons.inventory_2_outlined,
-                                                size: 36,
-                                                color: Color(0xFFD85F3D),
-                                              ),
+                                          errorBuilder: (_, _, _) => const Icon(
+                                            Icons.inventory_2_outlined,
+                                            size: 36,
+                                            color: Color(0xFFD85F3D),
+                                          ),
                                         )
                                       : const Icon(
                                           Icons.inventory_2_outlined,

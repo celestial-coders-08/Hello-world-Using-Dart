@@ -180,6 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _showDeleteAccountDialog() async {
     final passwordController = TextEditingController();
+    final navigator = Navigator.of(context);
     bool obscurePassword = true;
 
     await showDialog<void>(
@@ -266,8 +267,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               _showSnack('Account deleted successfully.');
                               final preferences =
                                   await SharedPreferences.getInstance();
+                              if (!navigator.mounted) return;
                               await preferences.remove('access_token');
-                              Navigator.of(context).pushAndRemoveUntil(
+                              if (!navigator.mounted) return;
+                              navigator.pushAndRemoveUntil(
                                 MaterialPageRoute(
                                   builder: (_) => const LoginScreen(),
                                 ),
@@ -525,10 +528,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        final navigator = Navigator.of(context);
                         final preferences =
                             await SharedPreferences.getInstance();
+                        if (!navigator.mounted) return;
                         await preferences.remove('access_token');
-                        Navigator.of(context).pushAndRemoveUntil(
+                        if (!navigator.mounted) return;
+                        navigator.pushAndRemoveUntil(
                           MaterialPageRoute(
                             builder: (_) => const LoginScreen(),
                           ),

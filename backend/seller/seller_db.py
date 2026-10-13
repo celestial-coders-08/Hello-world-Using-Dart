@@ -111,7 +111,7 @@ def connection() -> Iterator[sqlite3.Connection]:
                 shop_proof_url TEXT DEFAULT '',
                 aadhaar_url TEXT NOT NULL DEFAULT '',
                 face_images TEXT NOT NULL DEFAULT '[]',
-                status TEXT NOT NULL DEFAULT 'Approved',
+                status TEXT NOT NULL DEFAULT 'Pending',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -161,6 +161,27 @@ def connection() -> Iterator[sqlite3.Connection]:
                 """
                 INSERT INTO seller_schema_metadata (key, value)
                 VALUES ('stock_availability_v1', 'complete')
+                """
+            )
+
+        verification_migration = db.execute(
+            """
+            SELECT value FROM seller_schema_metadata
+            WHERE key = 'seller_verification_manual_review_v1'
+            """
+        ).fetchone()
+        if verification_migration is None:
+            db.execute(
+                """
+                UPDATE seller_verifications
+                SET status = 'Pending', updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'Approved'
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO seller_schema_metadata (key, value)
+                VALUES ('seller_verification_manual_review_v1', 'complete')
                 """
             )
 
@@ -218,7 +239,7 @@ def create_verification(seller_lookup: str, data: dict) -> dict:
                 data.get("shop_proof_url", ""),
                 data.get("aadhaar_url", ""),
                 json.dumps(data.get("face_images", [])),
-                data.get("status", "Approved"),
+                data.get("status", "Pending"),
             ),
         )
         db.commit()
@@ -237,6 +258,38 @@ def get_verification(seller_lookup: str) -> dict | None:
         ).fetchone()
     if not row:
         return None
+    return _decode_verification(dict(row))
+
+
+def list_verifications() -> list[dict]:
+    with connection() as db:
+        rows = db.execute(
+            """
+            SELECT * FROM seller_verifications
+            WHERE status IN ('Pending', 'Approved')
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+    return [_decode_verification(dict(row)) for row in rows]
+
+
+def update_verification_status(seller_lookup: str, status: str) -> dict | None:
+    with connection() as db:
+        cursor = db.execute(
+            """
+            UPDATE seller_verifications
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE seller_lookup = ?
+            """,
+            (status, seller_lookup),
+        )
+        if cursor.rowcount == 0:
+            return None
+        db.commit()
+        row = db.execute(
+            "SELECT * FROM seller_verifications WHERE seller_lookup = ?",
+            (seller_lookup,),
+        ).fetchone()
     return _decode_verification(dict(row))
 
 

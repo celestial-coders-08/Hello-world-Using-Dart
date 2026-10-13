@@ -688,8 +688,8 @@ class _SignupScreenState extends State<SignupScreen>
           children: [
             // ── Header ─────────────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: PawStayTheme.marginMobile,
+              padding: EdgeInsets.symmetric(
+                horizontal: PawStayResponsive.horizontalPadding(context),
                 vertical: PawStayTheme.unit * 1.5,
               ),
               child: Row(
@@ -712,8 +712,8 @@ class _SignupScreenState extends State<SignupScreen>
 
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: PawStayTheme.marginMobile,
+                padding: EdgeInsets.symmetric(
+                  horizontal: PawStayResponsive.horizontalPadding(context),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 24),
@@ -732,7 +732,11 @@ class _SignupScreenState extends State<SignupScreen>
                         ),
                         boxShadow: PawStayTheme.ambientShadow1,
                       ),
-                      padding: const EdgeInsets.all(PawStayTheme.gutter),
+                      padding: EdgeInsets.all(
+                        PawStayResponsive.isCompact(context)
+                            ? 14.0
+                            : PawStayTheme.gutter,
+                      ),
                       child: Form(
                         key: _formKey,
                         child: Column(
@@ -1113,8 +1117,9 @@ class _SignupScreenState extends State<SignupScreen>
                             const SizedBox(height: 20),
 
                             // ── Already have an account? Login ────────────
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 Text(
                                   'Already have an account? ',

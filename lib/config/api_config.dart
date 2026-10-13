@@ -11,6 +11,7 @@ class ApiConfig {
   static const int providerPort = 8002;
   static const int sellerPort = 8003;
   static const int paymentPort = 8004;
+  static const int adminPort = 8005;
 
   /// ── IMPORTANT ─────────────────────────────────────────────────────────────
   /// Fallback laptop LAN IP for a physical Android device. Override at build/run
@@ -18,7 +19,7 @@ class ApiConfig {
   /// ──────────────────────────────────────────────────────────────────────────
   static const String deviceIp = String.fromEnvironment(
     'PAWSTAY_API_HOST',
-    defaultValue: '192.168.1.101',
+    defaultValue: '192.168.1.5',
   );
   static const String androidHost = deviceIp;
 
@@ -77,5 +78,16 @@ class ApiConfig {
       return 'http://$androidHost:$paymentPort';
     }
     return 'http://127.0.0.1:$paymentPort';
+  }
+
+  /// URL for the dedicated admin reporting and seller review API.
+  static String get adminBaseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:$adminPort';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://$androidHost:$adminPort';
+    }
+    return 'http://127.0.0.1:$adminPort';
   }
 }

@@ -54,21 +54,15 @@ class _ShopScreenState extends State<ShopScreen> {
       final products = await PaymentApiService.fetchMarketplaceProducts();
       if (mounted) {
         setState(() {
-          _sellerProducts = products
-              .where(
-                (product) {
-                  final listingType = product['listing_type']
-                      ?.toString()
-                      .toLowerCase();
-                  if (widget.isProvider) {
-                    return const {'food', 'pets', 'other'}.contains(
-                      listingType,
-                    );
-                  }
-                  return const {'pets', 'other'}.contains(listingType);
-                },
-              )
-              .toList();
+          _sellerProducts = products.where((product) {
+            final listingType = product['listing_type']
+                ?.toString()
+                .toLowerCase();
+            if (widget.isProvider) {
+              return const {'food', 'pets', 'other'}.contains(listingType);
+            }
+            return const {'pets', 'other'}.contains(listingType);
+          }).toList();
           _isLoading = false;
           _error = null;
         });
@@ -462,9 +456,16 @@ class _ShopScreenState extends State<ShopScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: filteredProducts.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.65,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: PawStayResponsive.width(context) > 600
+                      ? 3
+                      : 2,
+                  childAspectRatio: PawStayResponsive.gridAspectRatio(
+                    context: context,
+                    baseRatio: 0.65,
+                    compactRatio: 0.58,
+                    tabletRatio: 0.72,
+                  ),
                   crossAxisSpacing: 14,
                   mainAxisSpacing: 14,
                 ),

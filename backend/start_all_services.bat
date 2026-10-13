@@ -10,6 +10,7 @@ echo   [8001] Message Service -^> backend\messages\main.py
 echo   [8002] Provider API   -^> backend\service_provider\main.py
 echo   [8003] Seller API     -^> backend\seller\main.py
 echo   [8004] Payment API    -^> backend\payment\main.py
+echo   [8005] Admin API      -^> backend\admin\main.py
 echo.
 
 REM Resolve backend directory relative to this .bat file
@@ -59,13 +60,17 @@ timeout /t 2 /nobreak >nul
 REM ── Service 5: Payment API (port 8004) ────────────────────────────────────
 start "PawStay Payment API [8004]" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Scripts\activate && python -m payment.main"
 
+REM ── Service 6: Admin API (port 8005) ──────────────────────────────────────
+start "PawStay Admin API [8005]" cmd /k "cd /d ""%BACKEND_DIR%"" && call ""%BACKEND_DIR%venv\Scripts\activate.bat"" && python -m admin.main"
+
 echo.
-echo All 5 services launched in separate windows.
+echo All 6 services launched in separate windows.
 echo   Main API      : http://localhost:8000
 echo   Message Service: http://localhost:8001
 echo   Provider API  : http://localhost:8002
 echo   Seller API    : http://localhost:8003
 echo   Payment API   : http://localhost:8004
+echo   Admin API     : http://localhost:8005
 echo.
 echo Close those windows to stop the services.
 pause

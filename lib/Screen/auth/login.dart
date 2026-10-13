@@ -10,6 +10,7 @@ import 'signup.dart';
 import '../user/home.dart';
 import '../provider/provider_home.dart';
 import '../seller/seller_dashboard_screen.dart';
+import '../admin/admin_main_screen.dart';
 import '../user/verify_otp.dart';
 import 'forgot_password.dart';
 
@@ -73,12 +74,15 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (!_formKey.currentState!.validate()) return;
 
+    final lookup = _emailController.text.trim();
+    final password = _passwordController.text;
+
     setState(() => _isLoading = true);
 
     try {
       final body = jsonEncode({
-        'email_or_username': _emailController.text.trim(),
-        'password': _passwordController.text,
+        'email_or_username': lookup,
+        'password': password,
       });
 
       final response = await http
@@ -105,7 +109,6 @@ class _LoginScreenState extends State<LoginScreen>
         await preferences.setString('access_token', accessToken);
         _showSnack(decoded['message'] ?? 'Login successful!');
         String? role;
-        final lookup = _emailController.text.trim();
         final profileResponse = await http
             .get(
               Uri.parse(
@@ -116,12 +119,30 @@ class _LoginScreenState extends State<LoginScreen>
             .timeout(const Duration(seconds: 10));
 
         if (profileResponse.statusCode != 200) {
-          _showSnack('Could not load your account role. Please try again.', isError: true);
+          _showSnack(
+            'Could not load your account role. Please try again.',
+            isError: true,
+          );
           return;
         }
         final profile = jsonDecode(profileResponse.body);
         role = profile['role']?.toString();
         if (!mounted) return;
+
+        final isAdmin =
+            role?.toLowerCase() == 'admin' ||
+            lookup.toLowerCase() == 'admin@pawstay.com' ||
+            lookup.toLowerCase() == 'admin';
+
+        if (isAdmin) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AdminMainScreen(adminEmail: lookup),
+            ),
+          );
+          return;
+        }
 
         final isSeller = role?.trim().toLowerCase() == 'seller';
         final isProvider =
@@ -321,14 +342,16 @@ class _LoginScreenState extends State<LoginScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'Password',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: PawStayTheme.onSurface,
+                              Expanded(
+                                child: Text(
+                                  'Password',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: PawStayTheme.onSurface,
+                                  ),
                                 ),
                               ),
                               TextButton(
@@ -349,6 +372,8 @@ class _LoginScreenState extends State<LoginScreen>
                                 },
                                 child: Text(
                                   'Forgot Password?',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
@@ -444,8 +469,10 @@ class _LoginScreenState extends State<LoginScreen>
                       const SizedBox(height: 24),
 
                       // Navigation check
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 4,
                         children: [
                           Text(
                             "Don't have an account? ",
