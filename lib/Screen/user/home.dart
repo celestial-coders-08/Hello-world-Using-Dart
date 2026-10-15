@@ -572,7 +572,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Interactive Map Banner — taps into full Google Maps screen
+            // Interactive Map Banner — opens the nearby pet services map
             GestureDetector(
               onTap: () => Navigator.push(
                 context,

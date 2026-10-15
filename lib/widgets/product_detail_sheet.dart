@@ -295,6 +295,13 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                                   return Image.network(
                                     images[idx],
                                     fit: BoxFit.cover,
+                                    cacheWidth:
+                                        (MediaQuery.sizeOf(context).width *
+                                                MediaQuery.devicePixelRatioOf(
+                                                  context,
+                                                ))
+                                            .round(),
+                                    cacheHeight: 500,
                                     errorBuilder:
                                         (context, error, stackTrace) => Center(
                                           child: Icon(

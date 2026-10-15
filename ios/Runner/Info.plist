@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Allow PawStay to show your location and guide you to nearby pet services.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow PawStay to use the camera for in-app seller face verification.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

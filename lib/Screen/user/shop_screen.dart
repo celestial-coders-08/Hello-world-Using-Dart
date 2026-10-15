@@ -291,11 +291,12 @@ class _ShopScreenState extends State<ShopScreen> {
         ),
         actions: [_buildCartButton(), const SizedBox(width: 8)],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
             // Search Bar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -450,12 +451,13 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                 ),
               )
-            else
-              // Product Grid
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: filteredProducts.length,
+              ]),
+            ),
+          ),
+          if (!_isLoading && _error == null && filteredProducts.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: PawStayResponsive.width(context) > 600
                       ? 3
@@ -469,7 +471,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   crossAxisSpacing: 14,
                   mainAxisSpacing: 14,
                 ),
-                itemBuilder: (context, index) {
+                delegate: SliverChildBuilderDelegate((context, index) {
                   final product = filteredProducts[index];
                   final name = product['name']?.toString() ?? 'Product';
                   final brand = product['brand']?.toString() ?? 'PawStay';
@@ -525,6 +527,8 @@ class _ShopScreenState extends State<ShopScreen> {
                                         ? Image.network(
                                             SellerApiService.mediaUrl(imageUrl),
                                             fit: BoxFit.cover,
+                                            cacheWidth: 360,
+                                            cacheHeight: 360,
                                             errorBuilder: (_, _, _) =>
                                                 const Icon(
                                                   Icons.shopping_bag_outlined,
@@ -621,10 +625,10 @@ class _ShopScreenState extends State<ShopScreen> {
                       ),
                     ),
                   );
-                },
+                }, childCount: filteredProducts.length),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

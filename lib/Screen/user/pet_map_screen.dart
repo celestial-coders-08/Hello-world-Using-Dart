@@ -2,183 +2,394 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../theme/pawstay_theme.dart';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-String get _mapsApiKey {
-  return dotenv.env['GOOGLE_MAPS_API_KEY'] ??
-      const String.fromEnvironment(
-        'GOOGLE_MAPS_API_KEY',
-        defaultValue: 'AIzaSyCvV8p3KVeMSYzbdC2ebgmNDB1-gISD4qg',
-      );
-}
+const _osmUserAgent = 'PawStay/1.0 (pet services map)';
+const _initialMapCenter = LatLng(16.7, 74.24);
 
-// Places Nearby Search radius in meters
-const int _searchRadius = 3000;
+enum _Endpoint { source, destination }
 
-// ─── Service Category Model ───────────────────────────────────────────────────
-class ServiceCategory {
-  final String id;
-  final String label;
-  final IconData icon;
-  final Color color;
-
-  /// Google Places API type keyword for Places Nearby Search
-  final String placesType;
-
-  const ServiceCategory({
+class _ServiceCategory {
+  const _ServiceCategory({
     required this.id,
     required this.label,
-    required this.icon,
     required this.color,
-    required this.placesType,
+    required this.icon,
   });
+
+  final String id;
+  final String label;
+  final Color color;
+  final IconData icon;
 }
 
-const List<ServiceCategory> _serviceCategories = [
-  ServiceCategory(
+const _categories = <_ServiceCategory>[
+  _ServiceCategory(
     id: 'all',
-    label: 'Nearby',
-    icon: Icons.location_on_rounded,
+    label: 'All',
     color: PawStayTheme.primary,
-    placesType: 'veterinary_care',
+    icon: Icons.pets_rounded,
   ),
-  ServiceCategory(
-    id: 'doctor',
-    label: 'Pet Doctor',
+  _ServiceCategory(
+    id: 'vet',
+    label: 'Pet hospitals',
+    color: Color(0xFFD84A4A),
     icon: Icons.medical_services_rounded,
-    color: Color(0xFFBA1A1A),
-    placesType: 'veterinary_care',
   ),
-  ServiceCategory(
-    id: 'grooming',
-    label: 'Pet Grooming',
-    icon: Icons.content_cut_rounded,
-    color: Color(0xFFD97757),
-    placesType: 'pet_store',
-  ),
-  ServiceCategory(
+  _ServiceCategory(
     id: 'food',
-    label: 'Pet Food',
+    label: 'Pet food',
+    color: Color(0xFF438B57),
     icon: Icons.restaurant_rounded,
-    color: Color(0xFF99462A),
-    placesType: 'pet_store',
   ),
-  ServiceCategory(
-    id: 'sell',
-    label: 'Pet Store',
-    icon: Icons.shopping_bag_rounded,
-    color: Color(0xFF506447),
-    placesType: 'pet_store',
+  _ServiceCategory(
+    id: 'shop',
+    label: 'Pet shops',
+    color: Color(0xFF3979C6),
+    icon: Icons.storefront_rounded,
   ),
-  ServiceCategory(
-    id: 'emergency',
-    label: 'Emergency',
-    icon: Icons.emergency_rounded,
-    color: Color(0xFFBA1A1A),
-    placesType: 'veterinary_care',
+  _ServiceCategory(
+    id: 'grooming',
+    label: 'Pet grooming',
+    color: Color(0xFF8B55B5),
+    icon: Icons.content_cut_rounded,
   ),
 ];
 
-// ─── Pet Service Place Model ──────────────────────────────────────────────────
-class PetServicePlace {
-  final String id;
-  final String name;
-  final String categoryId;
-  final LatLng position;
-  final double rating;
-  final String distance;
-  final String openStatus;
-  final String? address;
-  final String? placeId;
+const _mappedServices = <_PetService>[
+  _PetService(
+    id: 'shop-1',
+    name: 'The Pet Mansion',
+    categoryId: 'shop',
+    position: LatLng(16.7075947, 74.2412905),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-2',
+    name:
+        'Rio Pet Shop | Best Pet Shop in Kolhapur | Top Pet Food & Pet Care Store Near You',
+    categoryId: 'shop',
+    position: LatLng(16.6684848, 74.2705103),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-3',
+    name: 'Sai Suraj Pet Shop & Aquarium',
+    categoryId: 'shop',
+    position: LatLng(16.6922665, 74.2753517),
+    address: 'Grooming parlour',
+  ),
+  _PetService(
+    id: 'shop-4',
+    name: "PET'S KINGDOM",
+    categoryId: 'shop',
+    position: LatLng(16.7098199, 74.2394223),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-5',
+    name: 'Golden Pets',
+    categoryId: 'shop',
+    position: LatLng(16.6935372, 74.2417635),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-6',
+    name: 'Pet City Kolhapur',
+    categoryId: 'shop',
+    position: LatLng(16.6996166, 74.2410441),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-7',
+    name: 'Fish Planet And Pet Shop',
+    categoryId: 'shop',
+    position: LatLng(16.689251, 74.2249559),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-8',
+    name: 'Miracle Paws The Pets World kolhapur',
+    categoryId: 'shop',
+    position: LatLng(16.7127608, 74.2438647),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-9',
+    name: 'Little Paws Pet Spa',
+    categoryId: 'shop',
+    position: LatLng(16.6947388, 74.2418961),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-10',
+    name: 'AKIS PET MALL',
+    categoryId: 'shop',
+    position: LatLng(16.6936918, 74.2416431),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-11',
+    name: 'Kings Dog Grooming Center',
+    categoryId: 'shop',
+    position: LatLng(16.705701, 74.2379159),
+    address: '',
+  ),
+  _PetService(
+    id: 'shop-12',
+    name: 'Sai suraj Dog & Cat Grooming parlour & Spa',
+    categoryId: 'shop',
+    position: LatLng(16.693154, 74.2674548),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-1',
+    name: 'Animal Hospital Kolhapur',
+    categoryId: 'vet',
+    position: LatLng(16.6857358, 74.2241367),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-2',
+    name: 'Kanfe Globuz Pet Polyclinics',
+    categoryId: 'vet',
+    position: LatLng(16.704238, 74.2476959),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-3',
+    name: "Anil Patil's Dog Clinic",
+    categoryId: 'vet',
+    position: LatLng(16.7023184, 74.2536623),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-4',
+    name: 'Pets Clinic',
+    categoryId: 'vet',
+    position: LatLng(16.696037, 74.2453309),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-5',
+    name: 'Pets Matter Animal Clinic',
+    categoryId: 'vet',
+    position: LatLng(16.691416, 74.245948),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-6',
+    name: "WALVEKAR'S PET CARE CLINIC",
+    categoryId: 'vet',
+    position: LatLng(16.670997, 74.2276045),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-7',
+    name: 'Little Paws Pet Spa',
+    categoryId: 'vet',
+    position: LatLng(16.6947388, 74.2418961),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-8',
+    name: 'Synergy Pet clinic',
+    categoryId: 'vet',
+    position: LatLng(16.7131274, 74.2378335),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-9',
+    name: 'Paanjar Pol (Cow Barn & Animal Hospital)',
+    categoryId: 'vet',
+    position: LatLng(16.6915936, 74.2400798),
+    address: '',
+  ),
+  _PetService(
+    id: 'vet-10',
+    name: 'Dr. Girish Kulkarni Veterinary Surgeon',
+    categoryId: 'vet',
+    position: LatLng(16.6597911, 74.2509689),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-1',
+    name: 'Pet City Kolhapur',
+    categoryId: 'grooming',
+    position: LatLng(16.6996166, 74.2410441),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-2',
+    name: 'Miracle Paws The Pets World kolhapur',
+    categoryId: 'grooming',
+    position: LatLng(16.7127608, 74.2438647),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-3',
+    name: 'Kings Pet Mall',
+    categoryId: 'grooming',
+    position: LatLng(16.706735, 74.2407304),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-4',
+    name: 'pet day care centre',
+    categoryId: 'grooming',
+    position: LatLng(16.7056974, 74.2379105),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-5',
+    name: 'The Pet Mansion',
+    categoryId: 'grooming',
+    position: LatLng(16.7075947, 74.2412905),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-6',
+    name: 'Star Pet Shop & Parlor',
+    categoryId: 'grooming',
+    position: LatLng(16.6965082, 74.2434892),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-7',
+    name: 'Sai suraj Dog & Cat Grooming parlour & Spa',
+    categoryId: 'grooming',
+    position: LatLng(16.693154, 74.2674548),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-8',
+    name: 'Kings Dog Grooming Center',
+    categoryId: 'grooming',
+    position: LatLng(16.705701, 74.2379159),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-9',
+    name: 'AKIS PET MALL',
+    categoryId: 'grooming',
+    position: LatLng(16.6936918, 74.2416431),
+    address: '',
+  ),
+  _PetService(
+    id: 'grooming-10',
+    name: 'Little Paws Pet Spa',
+    categoryId: 'grooming',
+    position: LatLng(16.6947388, 74.2418961),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-1',
+    name: 'JINI PET STORE',
+    categoryId: 'food',
+    position: LatLng(16.6902289, 74.2266361),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-2',
+    name:
+        'Rio Pet Shop | Best Pet Shop in Kolhapur | Top Pet Food & Pet Care Store Near You',
+    categoryId: 'food',
+    position: LatLng(16.6684848, 74.2705103),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-3',
+    name: 'Pets Villa - Pet Shop in Kolhapur',
+    categoryId: 'food',
+    position: LatLng(16.6972217, 74.2439764),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-4',
+    name: 'Miracle Paws The Pets World kolhapur',
+    categoryId: 'food',
+    position: LatLng(16.7127608, 74.2438647),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-5',
+    name: 'Pet City Kolhapur',
+    categoryId: 'food',
+    position: LatLng(16.6996166, 74.2410441),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-6',
+    name: 'The Pet Mansion',
+    categoryId: 'food',
+    position: LatLng(16.7075947, 74.2412905),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-7',
+    name: 'Golden Pets',
+    categoryId: 'food',
+    position: LatLng(16.6935372, 74.2417635),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-8',
+    name: 'Kings Pet Mall',
+    categoryId: 'food',
+    position: LatLng(16.706735, 74.2407304),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-9',
+    name: 'Star Pet Shop & Parlor',
+    categoryId: 'food',
+    position: LatLng(16.6965082, 74.2434892),
+    address: '',
+  ),
+  _PetService(
+    id: 'food-10',
+    name: 'Fish Planet And Pet Shop',
+    categoryId: 'food',
+    position: LatLng(16.689251, 74.2249559),
+    address: '',
+  ),
+];
 
-  PetServicePlace({
+class _PetService {
+  const _PetService({
     required this.id,
     required this.name,
     required this.categoryId,
     required this.position,
-    required this.rating,
-    required this.distance,
-    required this.openStatus,
-    this.address,
-    this.placeId,
+    required this.address,
   });
 
-  factory PetServicePlace.fromPlacesResult(
-    Map<String, dynamic> result,
-    String categoryId,
-    LatLng userLocation,
-  ) {
-    final loc = result['geometry']['location'];
-    final pos = LatLng(
-      (loc['lat'] as num).toDouble(),
-      (loc['lng'] as num).toDouble(),
-    );
-
-    final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
-    final isOpen = result['opening_hours']?['open_now'];
-    final openStatus = isOpen == null
-        ? 'Hours unknown'
-        : (isOpen ? 'Open now' : 'Closed');
-
-    // Compute straight-line distance
-    final distM = _haversineDistance(userLocation, pos);
-    final distLabel = distM < 1000
-        ? '${distM.toInt()} m'
-        : '${(distM / 1000).toStringAsFixed(1)} km';
-
-    return PetServicePlace(
-      id: result['place_id'] as String,
-      name: result['name'] as String,
-      categoryId: categoryId,
-      position: pos,
-      rating: rating,
-      distance: distLabel,
-      openStatus: openStatus,
-      address: result['vicinity'] as String?,
-      placeId: result['place_id'] as String,
-    );
-  }
+  final String id;
+  final String name;
+  final String categoryId;
+  final LatLng position;
+  final String address;
 }
 
-double _haversineDistance(LatLng a, LatLng b) {
-  const r = 6371000.0;
-  final phi1 = a.latitude * math.pi / 180;
-  final phi2 = b.latitude * math.pi / 180;
-  final dPhi = (b.latitude - a.latitude) * math.pi / 180;
-  final dLambda = (b.longitude - a.longitude) * math.pi / 180;
-  final sinDPhi = math.sin(dPhi / 2);
-  final sinDLambda = math.sin(dLambda / 2);
-  final aSq =
-      sinDPhi * sinDPhi +
-      math.cos(phi1) * math.cos(phi2) * sinDLambda * sinDLambda;
-  return r * 2 * math.atan2(math.sqrt(aSq), math.sqrt(1 - aSq));
-}
-
-// ─── Navigation Step Model ────────────────────────────────────────────────────
-class NavStep {
-  final String instruction;
-  final String distance;
-  final String duration;
-  final LatLng startLocation;
-  NavStep({
-    required this.instruction,
-    required this.distance,
-    required this.duration,
-    required this.startLocation,
+class _RouteInstruction {
+  const _RouteInstruction({
+    required this.distanceFromStart,
+    required this.text,
+    required this.maneuver,
   });
+
+  final double distanceFromStart;
+  final String text;
+  final String maneuver;
 }
 
-// ─── Screen State ─────────────────────────────────────────────────────────────
 class PetMapScreen extends StatefulWidget {
   const PetMapScreen({super.key});
 
@@ -186,2025 +397,1631 @@ class PetMapScreen extends StatefulWidget {
   State<PetMapScreen> createState() => _PetMapScreenState();
 }
 
-class _PetMapScreenState extends State<PetMapScreen>
-    with TickerProviderStateMixin {
-  // Map controller
-  final Completer<GoogleMapController> _mapController = Completer();
+class _PetMapScreenState extends State<PetMapScreen> {
+  final MapController _mapController = MapController();
+
+  StreamSubscription<Position>? _positionSubscription;
   LatLng? _currentPosition;
-  bool _isLoadingLocation = true;
+  LatLng? _source;
+  LatLng? _destination;
+  _PetService? _selectedPlace;
+  _Endpoint _selectedEndpoint = _Endpoint.destination;
+  String _sourceName = 'My current location';
+  String _destinationName = '';
+  String _selectedCategory = 'all';
   String _locationError = '';
-
-  // Filter state
-  String _selectedCategoryId = 'all';
-  bool _isLoadingPlaces = false;
-
-  // Selected place
-  PetServicePlace? _selectedPlace;
-  bool _isRouting = false;
+  final List<_PetService> _services = _mappedServices;
   List<LatLng> _routePoints = [];
-
-  // Markers
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
-  List<Marker> _trailMarkers = [];
-  BitmapDescriptor? _pawIcon;
-
-  // Paw pulse animation (for loading / header badge)
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  // Navigation paw trail animation
-  late AnimationController _pawTrailController;
-  int _pawStep = 0;
-
-  // Real places from Places API
-  List<PetServicePlace> _allPlaces = [];
-
-  // Navigation state
+  List<double> _routeSegmentLengths = [];
+  List<double> _routeCumulativeDistances = [];
+  List<_RouteInstruction> _routeInstructions = [];
+  double _routeDistanceMeters = 0;
+  double _routeGeometryDistanceMeters = 0;
+  double _routeDurationSeconds = 0;
+  double _remainingDistanceMeters = 0;
+  double _remainingDurationSeconds = 0;
+  int _routeProgressIndex = 0;
+  double _routeProgressMeters = 0;
+  LatLng? _routeProgressPosition;
+  int _currentInstructionIndex = 0;
+  double _headingDegrees = 0;
+  int _routeRequestId = 0;
+  int _offRouteUpdates = 0;
+  DateTime? _lastRerouteAt;
+  bool _isLoadingLocation = true;
+  bool _isLoadingRoute = false;
   bool _isNavigating = false;
-  NavStep? _currentNavStep;
-  String _remainingDistance = '';
-  String _remainingDuration = '';
-  List<NavStep> _navSteps = [];
-
-  Timer? _routeAnimationTimer;
-  StreamSubscription<Position>? _positionStream;
+  bool _isPickingOnMap = false;
+  bool _isRerouting = false;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _pawTrailController =
-        AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 600),
-        )..addStatusListener((s) {
-          if (s == AnimationStatus.completed && _isNavigating) {
-            setState(() => _pawStep = (_pawStep + 1) % 4);
-            _pawTrailController.reset();
-            _pawTrailController.forward();
-          }
-        });
-
-    _loadPawIcon();
-    _initLocation();
-  }
-
-  Future<void> _loadPawIcon() async {
-    const int size = 64;
-    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-    final Canvas canvas = Canvas(pictureRecorder);
-
-    // Deep blue fill paint matching map UI screenshot
-    final Paint fillPaint = Paint()
-      ..color = const Color(0xFF0F4C81)
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-
-    // Draw main pad (metacarpal pad)
-    final Path mainPadPath = Path();
-    mainPadPath.moveTo(size * 0.5, size * 0.48);
-    mainPadPath.cubicTo(
-      size * 0.25,
-      size * 0.48,
-      size * 0.20,
-      size * 0.72,
-      size * 0.35,
-      size * 0.82,
-    );
-    mainPadPath.cubicTo(
-      size * 0.42,
-      size * 0.86,
-      size * 0.58,
-      size * 0.86,
-      size * 0.65,
-      size * 0.82,
-    );
-    mainPadPath.cubicTo(
-      size * 0.80,
-      size * 0.72,
-      size * 0.75,
-      size * 0.48,
-      size * 0.5,
-      size * 0.48,
-    );
-    canvas.drawPath(mainPadPath, fillPaint);
-
-    // Draw 4 toe pads in an arc
-    final List<Offset> toeCenters = [
-      const Offset(size * 0.26, size * 0.42),
-      const Offset(size * 0.40, size * 0.28),
-      const Offset(size * 0.60, size * 0.28),
-      const Offset(size * 0.74, size * 0.42),
-    ];
-    final List<double> toeRadiiX = [
-      size * 0.08,
-      size * 0.085,
-      size * 0.085,
-      size * 0.08,
-    ];
-    final List<double> toeRadiiY = [
-      size * 0.11,
-      size * 0.12,
-      size * 0.12,
-      size * 0.11,
-    ];
-    final List<double> toeAngles = [-0.35, -0.12, 0.12, 0.35];
-
-    for (int i = 0; i < 4; i++) {
-      canvas.save();
-      canvas.translate(toeCenters[i].dx, toeCenters[i].dy);
-      canvas.rotate(toeAngles[i]);
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset.zero,
-          width: toeRadiiX[i] * 2,
-          height: toeRadiiY[i] * 2,
-        ),
-        fillPaint,
-      );
-      canvas.restore();
-    }
-
-    final ui.Image image = await pictureRecorder.endRecording().toImage(
-      size,
-      size,
-    );
-    final ByteData? byteData = await image.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    if (byteData != null) {
-      _pawIcon = BitmapDescriptor.bytes(byteData.buffer.asUint8List());
-    }
-  }
-
-  /// Calculates bearing (heading angle in degrees) from p1 to p2
-  double _calculateBearing(LatLng p1, LatLng p2) {
-    final lat1 = p1.latitude * math.pi / 180;
-    final lat2 = p2.latitude * math.pi / 180;
-    final dLng = (p2.longitude - p1.longitude) * math.pi / 180;
-
-    final y = math.sin(dLng) * math.cos(lat2);
-    final x =
-        math.cos(lat1) * math.sin(lat2) -
-        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
-    final bearing = math.atan2(y, x);
-    return (bearing * 180 / math.pi + 360) % 360;
-  }
-
-  /// Calculates perpendicular lat/lng offset
-  LatLng _offsetLocation(
-    LatLng point,
-    double bearingDegrees,
-    double offsetMeters,
-  ) {
-    const earthRadius = 6378137.0;
-    final d = offsetMeters / earthRadius;
-    final brng = bearingDegrees * math.pi / 180;
-    final lat1 = point.latitude * math.pi / 180;
-    final lon1 = point.longitude * math.pi / 180;
-
-    final lat2 = math.asin(
-      math.sin(lat1) * math.cos(d) +
-          math.cos(lat1) * math.sin(d) * math.cos(brng),
-    );
-    final lon2 =
-        lon1 +
-        math.atan2(
-          math.sin(brng) * math.sin(d) * math.cos(lat1),
-          math.cos(d) - math.sin(lat1) * math.sin(lat2),
-        );
-
-    return LatLng(lat2 * 180 / math.pi, lon2 * 180 / math.pi);
-  }
-
-  /// Generates bearing-aligned, left/right alternating paw print markers along points
-  List<Marker> _generatePawMarkers(List<LatLng> points) {
-    if (_pawIcon == null || points.length < 2) return [];
-
-    final List<Marker> pawMarkers = [];
-    const double interval = 25.0; // Place a paw footprint every 25 meters
-    double accumulatedDistance = 0.0;
-    bool isLeftStep = true;
-    int pawIdCounter = 0;
-
-    for (int i = 0; i < points.length - 1; i++) {
-      final p1 = points[i];
-      final p2 = points[i + 1];
-      final segmentDist = _haversineDistance(p1, p2);
-      if (segmentDist <= 0.001) continue;
-
-      final segmentBearing = _calculateBearing(p1, p2);
-
-      while (accumulatedDistance + segmentDist >= interval) {
-        final double distanceOnSegment = interval - accumulatedDistance;
-        final double ratio = distanceOnSegment / segmentDist;
-        final double lat = p1.latitude + (p2.latitude - p1.latitude) * ratio;
-        final double lng = p1.longitude + (p2.longitude - p1.longitude) * ratio;
-        final centerPos = LatLng(lat, lng);
-
-        final double perpBearing = isLeftStep
-            ? (segmentBearing - 90 + 360) % 360
-            : (segmentBearing + 90) % 360;
-        final offsetPos = _offsetLocation(centerPos, perpBearing, 2.2);
-
-        pawMarkers.add(
-          Marker(
-            markerId: MarkerId('paw_${pawIdCounter++}'),
-            position: offsetPos,
-            icon: _pawIcon!,
-            rotation: segmentBearing,
-            anchor: const Offset(0.5, 0.5),
-            flat: true,
-          ),
-        );
-
-        isLeftStep = !isLeftStep;
-        accumulatedDistance -= interval;
-      }
-      accumulatedDistance += segmentDist;
-    }
-
-    return pawMarkers;
-  }
-
-  /// Dynamically shorten the route polyline and paw footprints as user moves
-  void _shortenPathForUserLocation(LatLng userPos) {
-    if (_routePoints.isEmpty || !_isNavigating || _selectedPlace == null) {
-      return;
-    }
-
-    int closestSegmentIndex = 0;
-    double minDistanceToPolyline = double.infinity;
-
-    for (int i = 0; i < _routePoints.length - 1; i++) {
-      final p1 = _routePoints[i];
-      final p2 = _routePoints[i + 1];
-
-      final segmentLength = _haversineDistance(p1, p2);
-
-      double ratio = 0.0;
-      if (segmentLength > 0.001) {
-        final dot =
-            ((userPos.latitude - p1.latitude) * (p2.latitude - p1.latitude) +
-                (userPos.longitude - p1.longitude) *
-                    (p2.longitude - p1.longitude)) /
-            (math.pow(p2.latitude - p1.latitude, 2) +
-                math.pow(p2.longitude - p1.longitude, 2));
-        ratio = dot.clamp(0.0, 1.0);
-      }
-
-      final projLat = p1.latitude + (p2.latitude - p1.latitude) * ratio;
-      final projLng = p1.longitude + (p2.longitude - p1.longitude) * ratio;
-      final projPos = LatLng(projLat, projLng);
-      final distToProj = _haversineDistance(userPos, projPos);
-
-      if (distToProj < minDistanceToPolyline) {
-        minDistanceToPolyline = distToProj;
-        closestSegmentIndex = i;
-      }
-    }
-
-    // Build shortened route from user position onwards
-    final List<LatLng> shortenedRoute = [userPos];
-    for (int i = closestSegmentIndex + 1; i < _routePoints.length; i++) {
-      shortenedRoute.add(_routePoints[i]);
-    }
-
-    final updatedPaws = _generatePawMarkers(shortenedRoute);
-    final routePolyline = shortenedRoute.length >= 2
-        ? Polyline(
-            polylineId: const PolylineId('navigation_route_polyline'),
-            points: shortenedRoute,
-            color: PawStayTheme.primary,
-            width: 6,
-            startCap: Cap.roundCap,
-            endCap: Cap.roundCap,
-            jointType: JointType.round,
-          )
-        : null;
-
-    final remDistM = _haversineDistance(userPos, _selectedPlace!.position);
-    final remDistText = remDistM < 1000
-        ? '${remDistM.toInt()} m'
-        : '${(remDistM / 1000).toStringAsFixed(1)} km';
-    final estMinutes = (remDistM / 80).ceil();
-    final remDurText = estMinutes <= 1 ? '1 min' : '$estMinutes mins';
-
-    setState(() {
-      _routePoints = shortenedRoute;
-      _trailMarkers = updatedPaws;
-      _polylines = routePolyline != null ? {routePolyline} : {};
-      _remainingDistance = remDistText;
-      _remainingDuration = remDurText;
-    });
-
-    _buildMarkers();
-    _updateNavigationProgress(userPos);
-  }
-
-  /// Simulate walking movement along the route step-by-step for testing/demo
-  void _startMovementSimulation() {
-    if (_routePoints.length < 2 || !_isNavigating) return;
-
-    _routeAnimationTimer?.cancel();
-
-    final List<LatLng> waypoints = [];
-    for (int i = 0; i < _routePoints.length - 1; i++) {
-      final p1 = _routePoints[i];
-      final p2 = _routePoints[i + 1];
-      final dist = _haversineDistance(p1, p2);
-      final int steps = (dist / 12.0).clamp(3, 25).toInt();
-      for (int s = 0; s < steps; s++) {
-        final ratio = s / steps;
-        waypoints.add(
-          LatLng(
-            p1.latitude + (p2.latitude - p1.latitude) * ratio,
-            p1.longitude + (p2.longitude - p1.longitude) * ratio,
-          ),
-        );
-      }
-    }
-    if (_routePoints.isNotEmpty) waypoints.add(_routePoints.last);
-
-    int currentStep = 0;
-    _routeAnimationTimer = Timer.periodic(const Duration(milliseconds: 450), (
-      timer,
-    ) {
-      if (!mounted || !_isNavigating || currentStep >= waypoints.length) {
-        timer.cancel();
-        if (mounted &&
-            currentStep >= waypoints.length &&
-            _selectedPlace != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Arrived at ${_selectedPlace!.name}! 🐾',
-                style: GoogleFonts.plusJakartaSans(color: Colors.white),
-              ),
-              backgroundColor: PawStayTheme.primary,
-            ),
-          );
-        }
-        return;
-      }
-
-      final pos = waypoints[currentStep];
-      setState(() {
-        _currentPosition = pos;
-      });
-
-      _shortenPathForUserLocation(pos);
-
-      if (_mapController.isCompleted) {
-        _mapController.future.then((ctrl) {
-          ctrl.animateCamera(CameraUpdate.newLatLng(pos));
-        });
-      }
-
-      currentStep++;
-    });
+    _initializeLocation();
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
-    _pawTrailController.dispose();
-    _routeAnimationTimer?.cancel();
-    _positionStream?.cancel();
+    _positionSubscription?.cancel();
+    _mapController.dispose();
     super.dispose();
   }
 
-  // ─── Location ──────────────────────────────────────────────────────────────
-  Future<void> _initLocation() async {
+  Future<void> _initializeLocation() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          setState(() {
-            _locationError =
-                'Location services are disabled. Please enable GPS.';
-            _isLoadingLocation = false;
-          });
-        }
-        return;
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw const _LocationException(
+          'Turn on location services to find nearby pet services.',
+        );
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-
+      if (permission == LocationPermission.denied) {
+        throw const _LocationException(
+          'Location permission was denied. Allow location access to use the map.',
+        );
+      }
       if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          setState(() {
-            _locationError =
-                'Location permission permanently denied. Please enable it in Settings.';
-            _isLoadingLocation = false;
-          });
-        }
-        return;
-      }
-
-      // 1. Try instant last known location
-      Position? pos = await Geolocator.getLastKnownPosition();
-
-      // 2. Fetch current location with fallback accuracy & fast timeout
-      try {
-        pos ??= await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 8),
-          ),
-        );
-      } catch (_) {}
-
-      // Default fallback location (Center of India / New Delhi area if GPS unavailable)
-      final latLng = pos != null
-          ? LatLng(pos.latitude, pos.longitude)
-          : const LatLng(28.6139, 77.2090);
-
-      if (mounted) {
-        setState(() {
-          _currentPosition = latLng;
-          _isLoadingLocation = false;
-          _locationError = '';
-        });
-      }
-
-      // Fetch nearby places
-      await _fetchNearbyPlaces(latLng, _selectedCategoryId);
-      _buildMarkers();
-
-      // Animate camera to user location
-      if (_mapController.isCompleted) {
-        final controller = await _mapController.future;
-        controller.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: latLng, zoom: 15.0),
-          ),
+        throw const _LocationException(
+          'Location permission is disabled for PawStay. Enable it in Settings.',
         );
       }
 
-      // Start live position tracking
-      _positionStream =
-          Geolocator.getPositionStream(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.medium,
-              distanceFilter: 3,
-            ),
-          ).listen((Position position) {
-            if (!mounted) return;
-            final newPos = LatLng(position.latitude, position.longitude);
-            setState(() {
-              _currentPosition = newPos;
-            });
-
-            if (_isNavigating && _selectedPlace != null) {
-              _shortenPathForUserLocation(newPos);
-              if (_mapController.isCompleted) {
-                _mapController.future.then((ctrl) {
-                  ctrl.animateCamera(CameraUpdate.newLatLng(newPos));
-                });
-              }
-            } else {
-              _buildMarkers();
-            }
-          });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _currentPosition ??= const LatLng(28.6139, 77.2090);
-          _isLoadingLocation = false;
-          _locationError = '';
-        });
-      }
-    }
-  }
-
-  List<PetServicePlace> _generateSamplePlaces(LatLng center) {
-    return [
-      PetServicePlace(
-        id: 'sample_doc_1',
-        name: 'Happy Paws Pet Hospital & Vet Care',
-        categoryId: 'doctor',
-        position: LatLng(center.latitude + 0.0035, center.longitude + 0.0042),
-        rating: 4.9,
-        distance: '450 m',
-        openStatus: 'Open 24 Hours',
-        address: 'Central Park Circle, Suite 101',
-        placeId: null,
-      ),
-      PetServicePlace(
-        id: 'sample_doc_2',
-        name: 'Dr. Sharma Pet Clinic & Surgery',
-        categoryId: 'doctor',
-        position: LatLng(center.latitude - 0.0028, center.longitude + 0.0055),
-        rating: 4.8,
-        distance: '620 m',
-        openStatus: 'Open now · Closes 9 PM',
-        address: 'Main Market Road',
-        placeId: null,
-      ),
-      PetServicePlace(
-        id: 'sample_groom_1',
-        name: 'Fluffy Tails Pet Grooming Spa',
-        categoryId: 'grooming',
-        position: LatLng(center.latitude + 0.0051, center.longitude - 0.0032),
-        rating: 4.7,
-        distance: '780 m',
-        openStatus: 'Open now · Closes 8 PM',
-        address: 'High Street Arcade',
-        placeId: null,
-      ),
-      PetServicePlace(
-        id: 'sample_food_1',
-        name: 'Pawbites Premium Pet Food Mart',
-        categoryId: 'food',
-        position: LatLng(center.latitude - 0.0041, center.longitude - 0.0048),
-        rating: 4.8,
-        distance: '510 m',
-        openStatus: 'Open now · Closes 10 PM',
-        address: 'Plaza Shopping Complex',
-        placeId: null,
-      ),
-      PetServicePlace(
-        id: 'sample_store_1',
-        name: 'PawStay Mega Pet Store',
-        categoryId: 'sell',
-        position: LatLng(center.latitude + 0.0022, center.longitude - 0.0061),
-        rating: 4.9,
-        distance: '390 m',
-        openStatus: 'Open now · Closes 9:30 PM',
-        address: 'Block B, Commercial Hub',
-        placeId: null,
-      ),
-      PetServicePlace(
-        id: 'sample_emerg_1',
-        name: '24/7 Pet Emergency & Critical Care',
-        categoryId: 'emergency',
-        position: LatLng(center.latitude - 0.0062, center.longitude + 0.0021),
-        rating: 5.0,
-        distance: '890 m',
-        openStatus: 'Emergency Open 24/7',
-        address: 'Healthcare Boulevard',
-        placeId: null,
-      ),
-    ];
-  }
-
-  // ─── Google Places Nearby Search & Custom KML ─────────────────────────────
-  Future<void> _fetchNearbyPlaces(LatLng center, String categoryId) async {
-    if (mounted) setState(() => _isLoadingPlaces = true);
-
-    final List<PetServicePlace> results = [];
-    final seenIds = <String>{};
-
-    // 1. Fetch Custom KML Points
-    try {
-      final response = await http.get(
-        Uri.parse(
-          'https://www.google.com/maps/d/kml?mid=1CYuAvYG-d-ZeSw4kq61QOoTvHFsUK1s&forcekml=1',
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
         ),
       );
-      if (response.statusCode == 200) {
-        final String kml = utf8.decode(response.bodyBytes);
-        final placemarkExp = RegExp(
-          r'<Placemark>(.*?)</Placemark>',
-          dotAll: true,
-        );
-        final nameExp = RegExp(r'<name>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</name>');
-        final coordExp = RegExp(
-          r'<coordinates>\s*([^,]+),([^,]+),[^<]*</coordinates>',
-        );
+      if (!mounted) return;
 
-        for (final m in placemarkExp.allMatches(kml)) {
-          final block = m.group(1)!;
-          final nameMatch = nameExp.firstMatch(block);
-          final coordMatch = coordExp.firstMatch(block);
-
-          if (nameMatch != null && coordMatch != null) {
-            final name = nameMatch.group(1)!;
-            final lng = double.tryParse(coordMatch.group(1)!.trim());
-            final lat = double.tryParse(coordMatch.group(2)!.trim());
-
-            if (lat != null && lng != null) {
-              final pos = LatLng(lat, lng);
-              final distM = _haversineDistance(center, pos);
-              final distLabel = distM < 1000
-                  ? '${distM.toInt()} m'
-                  : '${(distM / 1000).toStringAsFixed(1)} km';
-
-              final customId = 'kml_${name.hashCode}';
-
-              String cat = 'sell';
-              final lower = name.toLowerCase();
-              if (lower.contains('hospital') ||
-                  lower.contains('clinic') ||
-                  lower.contains('vet') ||
-                  lower.contains('dr')) {
-                cat = 'doctor';
-              } else if (lower.contains('food')) {
-                cat = 'food';
-              } else if (lower.contains('grooming') ||
-                  lower.contains('spa') ||
-                  lower.contains('parlor')) {
-                cat = 'grooming';
-              }
-
-              if (seenIds.add(customId)) {
-                results.add(
-                  PetServicePlace(
-                    id: customId,
-                    name: name,
-                    categoryId: cat,
-                    position: pos,
-                    rating: 5.0,
-                    distance: distLabel,
-                    openStatus: 'Featured',
-                    address: 'Custom Map Location',
-                    placeId: null,
-                  ),
-                );
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {}
-
-    // 2. Collect types to search for Places API
-    final categories = categoryId == 'all'
-        ? _serviceCategories.where((c) => c.id != 'all').toList()
-        : _serviceCategories.where((c) => c.id == categoryId).toList();
-
-    final seenTypes = <String>{};
-    final toFetch = categories
-        .where((c) => seenTypes.add(c.placesType))
-        .toList();
-
-    for (final cat in toFetch) {
-      try {
-        final url = Uri.parse(
-          'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
-          '?location=${center.latitude},${center.longitude}'
-          '&radius=$_searchRadius'
-          '&type=${cat.placesType}'
-          '&key=$_mapsApiKey',
-        );
-
-        final response = await http
-            .get(url)
-            .timeout(const Duration(seconds: 8));
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['status'] == 'OK') {
-            for (final r in (data['results'] as List).take(10)) {
-              final id = r['place_id'] as String;
-              if (seenIds.add(id)) {
-                results.add(
-                  PetServicePlace.fromPlacesResult(
-                    r as Map<String, dynamic>,
-                    cat.id == 'all' ? cat.id : categoryId,
-                    center,
-                  ),
-                );
-              }
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    // 3. Fallback: If no places found (e.g. Places API denied/restricted), inject sample nearby pet services
-    if (results.isEmpty) {
-      final samples = _generateSamplePlaces(center);
-      for (final s in samples) {
-        if (seenIds.add(s.id)) {
-          results.add(s);
-        }
-      }
-    }
-
-    if (mounted) {
+      final point = LatLng(position.latitude, position.longitude);
       setState(() {
-        _allPlaces = results;
-        _isLoadingPlaces = false;
+        _currentPosition = point;
+        _source = point;
+        _sourceName = 'My current location';
+        _isLoadingLocation = false;
+        _locationError = '';
+        if (position.heading.isFinite && position.heading >= 0) {
+          _headingDegrees = position.heading;
+        }
       });
-    }
-  }
-
-  double _getHueForCategory(String categoryId) {
-    switch (categoryId) {
-      case 'doctor':
-      case 'emergency':
-        return BitmapDescriptor.hueRed;
-      case 'sell':
-        return BitmapDescriptor.hueGreen;
-      case 'food':
-        return BitmapDescriptor.hueOrange;
-      case 'grooming':
-        return BitmapDescriptor.hueMagenta;
-      default:
-        return BitmapDescriptor.hueViolet;
-    }
-  }
-
-  void _buildMarkers() {
-    final filtered = _selectedCategoryId == 'all'
-        ? _allPlaces
-        : _allPlaces.where((p) => p.categoryId == _selectedCategoryId).toList();
-
-    setState(() {
-      _markers = filtered.map((place) {
-        final isSelected = _selectedPlace?.id == place.id;
-        return Marker(
-          markerId: MarkerId(place.id),
-          position: place.position,
-          onTap: () => _onMarkerTap(place),
-          icon: isSelected
-              ? BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueYellow,
-                )
-              : BitmapDescriptor.defaultMarkerWithHue(
-                  _getHueForCategory(place.categoryId),
-                ),
-          infoWindow: InfoWindow(
-            title: place.name,
-            snippet: place.rating > 0
-                ? '${place.rating.toStringAsFixed(1)}★ · ${place.distance}'
-                : place.distance,
-          ),
-        );
-      }).toSet();
-
-      // User location = BLUE marker
-      if (_currentPosition != null) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('my_location'),
-            position: _currentPosition!,
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueBlue,
+      _mapController.move(point, 14);
+      _positionSubscription =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.bestForNavigation,
+              distanceFilter: 5,
             ),
-            infoWindow: const InfoWindow(title: 'You are here'),
-          ),
-        );
-      }
-
-      _markers.addAll(_trailMarkers);
-    });
-  }
-
-  void _onMarkerTap(PetServicePlace place) {
-    setState(() {
-      _selectedPlace = place;
-    });
-    _buildMarkers();
-    _showPlaceBottomSheet(place);
-  }
-
-  Future<void> _fetchRoute(PetServicePlace destination) async {
-    if (_currentPosition == null) return;
-    setState(() {
-      _isRouting = true;
-      _routePoints = [];
-      _polylines = {};
-      _trailMarkers = [];
-      _navSteps = [];
-      _currentNavStep = null;
-    });
-
-    final origin =
-        '${_currentPosition!.latitude},${_currentPosition!.longitude}';
-    final dest =
-        '${destination.position.latitude},${destination.position.longitude}';
-
-    final url = Uri.parse(
-      'https://maps.googleapis.com/maps/api/directions/json'
-      '?origin=$origin&destination=$dest&mode=driving&key=$_mapsApiKey',
-    );
-
-    List<LatLng> decoded = [];
-    String totalDist = '';
-    String totalDur = '';
-    List<NavStep> parsedSteps = [];
-
-    try {
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data['status'] == 'OK') {
-          final route = data['routes'][0];
-          final leg = route['legs'][0];
-
-          // Decode overview polyline
-          final points = route['overview_polyline']['points'] as String;
-          decoded = _decodePolyline(points);
-
-          // Parse nav steps
-          final rawSteps = leg['steps'] as List;
-          parsedSteps = rawSteps.map((s) {
-            final loc = s['start_location'];
-            return NavStep(
-              instruction: _stripHtml(s['html_instructions'] as String),
-              distance: s['distance']['text'] as String,
-              duration: s['duration']['text'] as String,
-              startLocation: LatLng(
-                (loc['lat'] as num).toDouble(),
-                (loc['lng'] as num).toDouble(),
-              ),
-            );
-          }).toList();
-
-          totalDist = leg['distance']['text'] as String;
-          totalDur = leg['duration']['text'] as String;
-        }
-      }
-    } catch (_) {}
-
-    // Fallback: If Directions API is unauthorized / unavailable / returns error status, generate smooth route waypoints
-    if (decoded.isEmpty) {
-      decoded = _generateFallbackRoute(_currentPosition!, destination.position);
-      final distM = _haversineDistance(_currentPosition!, destination.position);
-      totalDist = distM < 1000
-          ? '${distM.toInt()} m'
-          : '${(distM / 1000).toStringAsFixed(1)} km';
-      final estMinutes = (distM / 80).ceil();
-      totalDur = estMinutes <= 1 ? '1 min' : '$estMinutes mins';
-
-      parsedSteps = [
-        NavStep(
-          instruction: 'Follow paw footprints towards ${destination.name}',
-          distance: totalDist,
-          duration: totalDur,
-          startLocation: _currentPosition!,
-        ),
-        NavStep(
-          instruction: 'Arrive at ${destination.name}',
-          distance: '0 m',
-          duration: '0 min',
-          startLocation: destination.position,
-        ),
-      ];
-    }
-
-    // Generate bearing-aligned paw markers along the path
-    final pawMarkers = _generatePawMarkers(decoded);
-    final routePolyline = decoded.length >= 2
-        ? Polyline(
-            polylineId: const PolylineId('navigation_route_polyline'),
-            points: decoded,
-            color: PawStayTheme.primary,
-            width: 6,
-            startCap: Cap.roundCap,
-            endCap: Cap.roundCap,
-            jointType: JointType.round,
-          )
-        : null;
-
-    setState(() {
-      _routePoints = decoded;
-      _trailMarkers = pawMarkers;
-      _polylines = routePolyline != null ? {routePolyline} : {};
-      _remainingDistance = totalDist;
-      _remainingDuration = totalDur;
-      _navSteps = parsedSteps;
-      _isNavigating = true;
-      _currentNavStep = _navSteps.isNotEmpty ? _navSteps.first : null;
-    });
-
-    // Start paw trail animation
-    _pawStep = 0;
-    _pawTrailController.forward();
-
-    // Fit camera to route
-    if (_mapController.isCompleted) {
-      final controller = await _mapController.future;
-      final bounds = _boundsFromLatLngList([
-        _currentPosition!,
-        destination.position,
-        ...decoded,
-      ]);
-      controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
-    }
-
-    if (mounted) setState(() => _isRouting = false);
-    _buildMarkers(); // Re-build to render new paw print markers
-  }
-
-  /// Generates smooth curved fallback route waypoints when Google Directions API is unauthorized/erroring
-  List<LatLng> _generateFallbackRoute(LatLng start, LatLng end) {
-    final List<LatLng> points = [];
-    const int steps = 16;
-    final distM = _haversineDistance(start, end);
-    final bearing = _calculateBearing(start, end);
-    final perpBearing = (bearing + 90) % 360;
-    final maxOffsetMeters = math.min(distM * 0.08, 25.0);
-
-    for (int i = 0; i <= steps; i++) {
-      final ratio = i / steps;
-      final lat = start.latitude + (end.latitude - start.latitude) * ratio;
-      final lng = start.longitude + (end.longitude - start.longitude) * ratio;
-      final basePos = LatLng(lat, lng);
-
-      final offsetFactor = math.sin(ratio * math.pi) * maxOffsetMeters;
-      final curvePos = offsetFactor > 0.1
-          ? _offsetLocation(basePos, perpBearing, offsetFactor)
-          : basePos;
-      points.add(curvePos);
-    }
-    return points;
-  }
-
-  /// Strip HTML tags from Directions step instructions
-  String _stripHtml(String html) {
-    return html.replaceAll(RegExp(r'<[^>]+>'), ' ').trim();
-  }
-
-  /// Update navigation progress as the user moves
-  void _updateNavigationProgress(LatLng userPos) {
-    if (_navSteps.isEmpty) return;
-
-    // Find nearest upcoming step
-    int nearestIdx = 0;
-    double minDist = double.infinity;
-    for (int i = 0; i < _navSteps.length; i++) {
-      final d = _haversineDistance(userPos, _navSteps[i].startLocation);
-      if (d < minDist) {
-        minDist = d;
-        nearestIdx = i;
-      }
-    }
-
-    // Update remaining distance
-    if (mounted) {
+          ).listen(
+            _onPositionUpdate,
+            onError: (Object error) {
+              if (mounted) {
+                _showMessage('Live location updates stopped: $error');
+              }
+            },
+          );
+    } on _LocationException catch (error) {
+      if (!mounted) return;
       setState(() {
-        _currentNavStep = nearestIdx < _navSteps.length
-            ? _navSteps[nearestIdx]
-            : _navSteps.last;
-        // Recalculate remaining distance roughly
-        if (_selectedPlace != null) {
-          final rem = _haversineDistance(userPos, _selectedPlace!.position);
-          _remainingDistance = rem < 1000
-              ? '${rem.toInt()} m'
-              : '${(rem / 1000).toStringAsFixed(1)} km';
-        }
+        _isLoadingLocation = false;
+        _locationError = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingLocation = false;
+        _locationError = 'Could not get your location: $error';
       });
     }
   }
 
-  // Decode Google encoded polyline
-  List<LatLng> _decodePolyline(String encoded) {
-    final List<LatLng> result = [];
-    int index = 0;
-    int lat = 0, lng = 0;
+  void _onPositionUpdate(Position position) {
+    if (!mounted) return;
+    final point = LatLng(position.latitude, position.longitude);
 
-    while (index < encoded.length) {
-      int shift = 0, result1 = 0;
-      int b;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result1 |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      final dlat = (result1 & 1) != 0 ? ~(result1 >> 1) : result1 >> 1;
-      lat += dlat;
+    setState(() {
+      _currentPosition = point;
+      if (position.heading.isFinite && position.heading >= 0) {
+        _headingDegrees = position.heading;
+      }
+      if (!_isNavigating && _sourceName == 'My current location') {
+        _source = point;
+      }
+      if (_isNavigating && _routePoints.isNotEmpty) {
+        _updateRouteProgress(point);
+      }
+    });
 
-      shift = 0;
-      result1 = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result1 |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      final dlng = (result1 & 1) != 0 ? ~(result1 >> 1) : result1 >> 1;
-      lng += dlng;
-
-      result.add(LatLng(lat / 1E5, lng / 1E5));
+    if (_isNavigating) {
+      _mapController.move(
+        point,
+        math.max(_mapController.camera.zoom, 15).toDouble(),
+      );
+      if (position.heading.isFinite && position.heading >= 0) {
+        _mapController.rotate(-position.heading);
+      }
+      _checkOffRoute(point);
     }
-    return result;
   }
 
-  LatLngBounds _boundsFromLatLngList(List<LatLng> list) {
-    double? minLat, maxLat, minLng, maxLng;
-    for (final p in list) {
-      if (minLat == null || p.latitude < minLat) minLat = p.latitude;
-      if (maxLat == null || p.latitude > maxLat) maxLat = p.latitude;
-      if (minLng == null || p.longitude < minLng) minLng = p.longitude;
-      if (maxLng == null || p.longitude > maxLng) maxLng = p.longitude;
+  void _setEndpoint(_Endpoint endpoint, LatLng position, String label) {
+    setState(() {
+      if (endpoint == _Endpoint.source) {
+        _source = position;
+        _sourceName = label;
+      } else {
+        _destination = position;
+        _destinationName = label;
+      }
+      _selectedEndpoint = _Endpoint.destination;
+      _isPickingOnMap = false;
+      _selectedPlace = null;
+      _routePoints = [];
+      _routeSegmentLengths = [];
+      _routeCumulativeDistances = [];
+      _routeGeometryDistanceMeters = 0;
+      _routeDistanceMeters = 0;
+      _routeDurationSeconds = 0;
+      _remainingDistanceMeters = 0;
+      _remainingDurationSeconds = 0;
+      _routeProgressIndex = 0;
+      _routeProgressMeters = 0;
+      _routeProgressPosition = null;
+      _routeRequestId++;
+      _isLoadingRoute = false;
+    });
+    _mapController.move(position, 15);
+    if (_source != null && _destination != null) {
+      unawaited(_requestRoute().then((_) {}));
     }
-    return LatLngBounds(
-      southwest: LatLng(minLat!, minLng!),
-      northeast: LatLng(maxLat!, maxLng!),
+  }
+
+  void _onMapTap(TapPosition tapPosition, LatLng point) {
+    if (!_isPickingOnMap) {
+      setState(() => _selectedPlace = null);
+      return;
+    }
+    final endpoint = _selectedEndpoint;
+    _setEndpoint(
+      endpoint,
+      point,
+      endpoint == _Endpoint.source ? 'Map location (source)' : 'Map location',
     );
   }
 
-  Future<void> _openNativeMaps(PetServicePlace dest) async {
-    final lat = dest.position.latitude;
-    final lng = dest.position.longitude;
-    final name = Uri.encodeComponent(dest.name);
-    // Deep link into Google Maps for turn-by-turn
-    final googleUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&destination=$lat,$lng&destination_place_id=${dest.placeId ?? ''}'
-      '&travelmode=driving',
+  Future<bool> _requestRoute({LatLng? origin}) async {
+    final start = origin ?? _source;
+    final end = _destination;
+    if (start == null || end == null) {
+      _showMessage('Choose both a source and destination first.');
+      return false;
+    }
+    final requestId = ++_routeRequestId;
+    setState(() => _isLoadingRoute = true);
+    try {
+      final uri = Uri.https(
+        'router.project-osrm.org',
+        '/route/v1/driving/'
+            '${start.longitude},${start.latitude};'
+            '${end.longitude},${end.latitude}',
+        {'overview': 'full', 'geometries': 'geojson', 'steps': 'true'},
+      );
+      final response = await http
+          .get(uri, headers: const {'User-Agent': _osmUserAgent})
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        throw HttpException('Route service returned ${response.statusCode}.');
+      }
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['code'] != 'Ok') {
+        throw HttpException('No driving route was found between these places.');
+      }
+      final route =
+          (body['routes'] as List<dynamic>).first as Map<String, dynamic>;
+      final geometry = route['geometry'] as Map<String, dynamic>;
+      final coordinates = geometry['coordinates'] as List<dynamic>;
+      final points = coordinates.map((coordinate) {
+        final values = coordinate as List<dynamic>;
+        return LatLng(
+          (values[1] as num).toDouble(),
+          (values[0] as num).toDouble(),
+        );
+      }).toList();
+      if (points.length < 2) {
+        throw const HttpException(
+          'The route service returned no route geometry.',
+        );
+      }
+      final segmentLengths = <double>[
+        for (var i = 0; i < points.length - 1; i++)
+          Geolocator.distanceBetween(
+            points[i].latitude,
+            points[i].longitude,
+            points[i + 1].latitude,
+            points[i + 1].longitude,
+          ),
+      ];
+      final cumulativeDistances = <double>[0];
+      for (final segmentLength in segmentLengths) {
+        cumulativeDistances.add(cumulativeDistances.last + segmentLength);
+      }
+      final instructions = _parseRouteInstructions(
+        route,
+        points,
+        cumulativeDistances,
+      );
+      if (!mounted || requestId != _routeRequestId) return false;
+      setState(() {
+        _routePoints = points;
+        _routeSegmentLengths = segmentLengths;
+        _routeCumulativeDistances = cumulativeDistances;
+        _routeInstructions = instructions;
+        _routeGeometryDistanceMeters = _routeCumulativeDistances.last;
+        _routeDistanceMeters = (route['distance'] as num).toDouble();
+        _routeDurationSeconds = (route['duration'] as num).toDouble();
+        _routeProgressIndex = 0;
+        _routeProgressMeters = 0;
+        _routeProgressPosition = points.first;
+        _currentInstructionIndex = 0;
+        _remainingDistanceMeters = _routeDistanceMeters;
+        _remainingDurationSeconds = _routeDurationSeconds;
+        if (_isNavigating) _updateRouteProgress(_currentPosition ?? start);
+        _isLoadingRoute = false;
+      });
+      if (!_isNavigating) {
+        _fitRoute(points);
+      } else if (_currentPosition case final position?) {
+        _mapController.move(position, 17);
+      }
+      return true;
+    } catch (error) {
+      if (!mounted || requestId != _routeRequestId) return false;
+      setState(() => _isLoadingRoute = false);
+      _showMessage('Could not calculate route: $error');
+      return false;
+    }
+  }
+
+  List<_RouteInstruction> _parseRouteInstructions(
+    Map<String, dynamic> route,
+    List<LatLng> routePoints,
+    List<double> cumulativeDistances,
+  ) {
+    final rawLegs = route['legs'];
+    if (rawLegs is! List) return const [];
+
+    final instructions = <_RouteInstruction>[];
+    for (final rawLeg in rawLegs) {
+      if (rawLeg is! Map<String, dynamic>) continue;
+      final rawSteps = rawLeg['steps'];
+      if (rawSteps is! List) continue;
+      for (final rawStep in rawSteps) {
+        if (rawStep is! Map<String, dynamic>) continue;
+        final maneuver = rawStep['maneuver'];
+        if (maneuver is! Map<String, dynamic>) continue;
+
+        final location = maneuver['location'];
+        if (location is! List || location.length < 2) continue;
+        final longitude = location[0];
+        final latitude = location[1];
+        if (longitude is! num || latitude is! num) continue;
+        final maneuverPoint = LatLng(latitude.toDouble(), longitude.toDouble());
+
+        var nearestIndex = 0;
+        var nearestDistance = double.infinity;
+        for (var i = 0; i < routePoints.length; i++) {
+          final point = routePoints[i];
+          final distance = Geolocator.distanceBetween(
+            maneuverPoint.latitude,
+            maneuverPoint.longitude,
+            point.latitude,
+            point.longitude,
+          );
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = i;
+          }
+        }
+
+        final type = maneuver['type']?.toString() ?? '';
+        final modifier = maneuver['modifier']?.toString() ?? '';
+        final name = rawStep['name']?.toString().trim() ?? '';
+        final instruction = _instructionText(
+          type: type,
+          modifier: modifier,
+          roadName: name,
+        );
+        if (instruction.isEmpty) continue;
+        final distanceFromStart = cumulativeDistances[nearestIndex];
+        if (instructions.isNotEmpty &&
+            distanceFromStart < instructions.last.distanceFromStart) {
+          continue;
+        }
+        instructions.add(
+          _RouteInstruction(
+            distanceFromStart: distanceFromStart,
+            text: instruction,
+            maneuver: modifier,
+          ),
+        );
+      }
+    }
+    return instructions;
+  }
+
+  String _instructionText({
+    required String type,
+    required String modifier,
+    required String roadName,
+  }) {
+    final road = roadName.isEmpty ? '' : ' onto $roadName';
+    switch (type) {
+      case 'depart':
+        return roadName.isEmpty
+            ? 'Head toward your destination'
+            : 'Head toward $roadName';
+      case 'arrive':
+        return 'Arrive at your destination';
+      case 'roundabout':
+      case 'rotary':
+        return 'Enter the roundabout$road';
+      case 'exit roundabout':
+      case 'exit rotary':
+        return 'Exit the roundabout$road';
+      case 'merge':
+        return 'Merge$road';
+      case 'fork':
+        return 'Keep ${modifier.isEmpty ? 'ahead' : modifier}$road';
+      case 'end of road':
+        return 'At the end of the road, turn ${modifier.isEmpty ? 'ahead' : modifier}$road';
+      case 'use lane':
+        return 'Use the ${modifier.isEmpty ? 'appropriate' : modifier} lane$road';
+      case 'turn':
+      case 'continue':
+      case 'new name':
+      case 'on ramp':
+      case 'off ramp':
+      case 'notification':
+        if (modifier.isEmpty || modifier == 'straight') {
+          return roadName.isEmpty
+              ? 'Continue straight'
+              : 'Continue on $roadName';
+        }
+        final action = switch (modifier) {
+          'uturn' || 'u-turn' => 'Make a U-turn',
+          'sharp left' => 'Turn sharp left',
+          'sharp right' => 'Turn sharp right',
+          'slight left' => 'Turn slight left',
+          'slight right' => 'Turn slight right',
+          'left' => 'Turn left',
+          'right' => 'Turn right',
+          _ => 'Continue',
+        };
+        return '$action$road';
+      default:
+        return roadName.isEmpty ? '' : 'Continue on $roadName';
+    }
+  }
+
+  void _fitRoute(List<LatLng> points) {
+    if (points.length < 2) return;
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.fromLTRB(44, 250, 44, 260),
+      ),
     );
-    if (await canLaunchUrl(googleUri)) {
-      await launchUrl(googleUri, mode: LaunchMode.externalApplication);
-    } else {
-      final uri = Uri.parse('geo:$lat,$lng?q=$lat,$lng($name)');
-      if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _startNavigation() async {
+    if (_destination == null) {
+      _showMessage('Choose a destination before starting navigation.');
+      return;
+    }
+    if (_currentPosition == null) {
+      await _initializeLocation();
+      if (_currentPosition == null) return;
+    }
+
+    setState(() {
+      _isNavigating = true;
+      _source = _currentPosition;
+      _sourceName = 'My current location';
+      _routePoints = [];
+      _routeSegmentLengths = [];
+      _routeCumulativeDistances = [];
+      _routeInstructions = [];
+      _routeGeometryDistanceMeters = 0;
+      _routeDistanceMeters = 0;
+      _routeDurationSeconds = 0;
+      _remainingDistanceMeters = 0;
+      _remainingDurationSeconds = 0;
+      _routeProgressIndex = 0;
+      _routeProgressMeters = 0;
+      _routeProgressPosition = null;
+      _currentInstructionIndex = 0;
+    });
+    final routeReady = await _requestRoute(origin: _currentPosition);
+    if (!mounted || !routeReady) {
+      if (mounted) setState(() => _isNavigating = false);
+      return;
+    }
+    if (_currentPosition != null) {
+      setState(() => _updateRouteProgress(_currentPosition!));
     }
   }
 
   void _stopNavigation() {
-    _pawTrailController.stop();
-    _routeAnimationTimer?.cancel();
     setState(() {
       _isNavigating = false;
-      _routePoints = [];
-      _polylines = {};
-      _trailMarkers = [];
-      _selectedPlace = null;
-      _navSteps = [];
-      _currentNavStep = null;
-      _remainingDistance = '';
-      _remainingDuration = '';
+      _offRouteUpdates = 0;
     });
-    _buildMarkers();
   }
 
-  // ─── Bottom Sheet ──────────────────────────────────────────────────────────
-  void _showPlaceBottomSheet(PetServicePlace place) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _PlaceBottomSheet(
-        place: place,
-        isRouting: _isRouting,
-        onStartNavigation: () async {
-          Navigator.pop(context);
-          await _fetchRoute(place);
-        },
-        onOpenMaps: () {
-          Navigator.pop(context);
-          _openNativeMaps(place);
-        },
-      ),
+  void _updateRouteProgress(LatLng position) {
+    if (_routePoints.length < 2 || _routeSegmentLengths.isEmpty) return;
+    var nearestIndex = _routeProgressIndex.clamp(
+      0,
+      _routeSegmentLengths.length - 1,
     );
+    var nearestDistance = double.infinity;
+    var nearestFraction = 0.0;
+    LatLng? nearestPoint;
+    const earthRadiusMeters = 6371000.0;
+    final referenceLatitude = position.latitude * math.pi / 180;
+
+    for (var i = nearestIndex; i < _routeSegmentLengths.length; i++) {
+      final a = _routePoints[i];
+      final b = _routePoints[i + 1];
+      final ax =
+          (a.longitude - position.longitude) *
+          math.pi /
+          180 *
+          earthRadiusMeters *
+          math.cos(referenceLatitude);
+      final ay =
+          (a.latitude - position.latitude) * math.pi / 180 * earthRadiusMeters;
+      final bx =
+          (b.longitude - position.longitude) *
+          math.pi /
+          180 *
+          earthRadiusMeters *
+          math.cos(referenceLatitude);
+      final by =
+          (b.latitude - position.latitude) * math.pi / 180 * earthRadiusMeters;
+      final dx = bx - ax;
+      final dy = by - ay;
+      final lengthSquared = dx * dx + dy * dy;
+      final fraction = lengthSquared == 0
+          ? 0.0
+          : (-(ax * dx + ay * dy) / lengthSquared).clamp(0.0, 1.0).toDouble();
+      final projectedPoint = LatLng(
+        a.latitude + (b.latitude - a.latitude) * fraction,
+        a.longitude + (b.longitude - a.longitude) * fraction,
+      );
+      final distance = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        projectedPoint.latitude,
+        projectedPoint.longitude,
+      );
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+        nearestFraction = fraction;
+        nearestPoint = projectedPoint;
+      }
+    }
+
+    if (nearestPoint == null) return;
+    final projectedProgress =
+        _routeCumulativeDistances[nearestIndex] +
+        _routeSegmentLengths[nearestIndex] * nearestFraction;
+    if (projectedProgress >= _routeProgressMeters) {
+      _routeProgressIndex = nearestIndex;
+      _routeProgressMeters = projectedProgress;
+      _routeProgressPosition = nearestPoint;
+    }
+    while (_currentInstructionIndex < _routeInstructions.length - 1 &&
+        _routeInstructions[_currentInstructionIndex].distanceFromStart <=
+            _routeProgressMeters + 25) {
+      _currentInstructionIndex++;
+    }
+    final geometryRemaining =
+        (_routeGeometryDistanceMeters - _routeProgressMeters).clamp(
+          0.0,
+          _routeGeometryDistanceMeters,
+        );
+    final ratio = _routeGeometryDistanceMeters == 0
+        ? 0.0
+        : geometryRemaining / _routeGeometryDistanceMeters;
+    _remainingDistanceMeters = _routeDistanceMeters * ratio;
+    _remainingDurationSeconds = _routeDurationSeconds * ratio;
   }
 
-  // ─── Recenter ─────────────────────────────────────────────────────────────
-  Future<void> _recenterMap() async {
-    if (_currentPosition == null) return;
-    final ctrl = await _mapController.future;
-    ctrl.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: _currentPosition!, zoom: 15),
-      ),
-    );
-  }
+  void _checkOffRoute(LatLng position) {
+    if (!_isNavigating || _routePoints.isEmpty || _isRerouting) return;
+    final startIndex = math.max(0, _routeProgressIndex - 2).toInt();
+    var nearestDistance = double.infinity;
+    for (var i = startIndex; i < _routePoints.length; i++) {
+      final point = _routePoints[i];
+      nearestDistance = math.min(
+        nearestDistance,
+        Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          point.latitude,
+          point.longitude,
+        ),
+      );
+    }
 
-  // ─── Category filter change ─────────────────────────────────────────────────
-  Future<void> _onCategoryChanged(String catId) async {
-    if (_selectedCategoryId == catId) return;
-    setState(() {
-      _selectedCategoryId = catId;
-      _allPlaces = [];
-    });
-    if (_currentPosition != null) {
-      await _fetchNearbyPlaces(_currentPosition!, catId);
-      _buildMarkers();
+    if (nearestDistance > 65) {
+      _offRouteUpdates++;
+      final lastReroute = _lastRerouteAt;
+      final canReroute =
+          lastReroute == null ||
+          DateTime.now().difference(lastReroute) > const Duration(seconds: 12);
+      if (_offRouteUpdates >= 2 && canReroute) {
+        _offRouteUpdates = 0;
+        _lastRerouteAt = DateTime.now();
+        unawaited(_recalculateFromCurrentPosition());
+      }
+    } else {
+      _offRouteUpdates = 0;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: PawStayTheme.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: PawStayTheme.onSurfaceVariant,
-            size: 20,
+  Future<void> _recalculateFromCurrentPosition() async {
+    if (_currentPosition == null || _destination == null || _isRerouting) {
+      return;
+    }
+    setState(() => _isRerouting = true);
+    _showMessage('You are off route. Finding a new route…');
+    await _requestRoute(origin: _currentPosition);
+    if (mounted) setState(() => _isRerouting = false);
+  }
+
+  List<_PetService> get _visibleServices => _services
+      .where(
+        (service) =>
+            _selectedCategory == 'all' ||
+            service.categoryId == _selectedCategory,
+      )
+      .toList();
+
+  _RouteInstruction? get _currentInstruction =>
+      _routeInstructions.isEmpty ||
+          _currentInstructionIndex >= _routeInstructions.length
+      ? null
+      : _routeInstructions[_currentInstructionIndex];
+
+  void _selectCategory(String categoryId) {
+    setState(() {
+      _selectedCategory = categoryId;
+      _selectedPlace = null;
+    });
+  }
+
+  List<Marker> get _markers {
+    final markers = <Marker>[
+      for (final service in _visibleServices)
+        Marker(
+          point: service.position,
+          width: 44,
+          height: 52,
+          alignment: Alignment.topCenter,
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedPlace = service),
+            child: _serviceMarker(_categoryById(service.categoryId)),
           ),
-          onPressed: () => Navigator.pop(context),
         ),
-        centerTitle: true,
-        title: Text(
-          'Explore Nearby Services',
-          style: GoogleFonts.plusJakartaSans(
-            color: PawStayTheme.onSurface,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
+      if (_source != null && _sourceName != 'My current location')
+        Marker(
+          point: _source!,
+          width: 38,
+          height: 42,
+          child: const Icon(
+            Icons.trip_origin_rounded,
+            color: Color(0xFF438B57),
+            size: 32,
           ),
         ),
-      ),
-      body: Column(
-        children: [
-          // ── Category filter chips ─────────────────────────────────────────
-          Container(
-            color: Colors.white,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Row(
-                children: _serviceCategories.map((cat) {
-                  final isSelected = _selectedCategoryId == cat.id;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () => _onCategoryChanged(cat.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected ? cat.color : Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? cat.color
-                                : PawStayTheme.outlineVariant,
-                          ),
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: cat.color.withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ]
-                              : [],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              cat.icon,
-                              size: 15,
-                              color: isSelected
-                                  ? Colors.white
-                                  : PawStayTheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              cat.label,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 13,
-                                fontWeight: isSelected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: isSelected
-                                    ? Colors.white
-                                    : PawStayTheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
+      if (_currentPosition case final point?)
+        Marker(
+          point: point,
+          width: 42,
+          height: 42,
+          child: Transform.rotate(
+            angle: _headingDegrees * math.pi / 180,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF2367C9),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 8),
+                ],
               ),
-            ),
-          ),
-
-          // ── Map ───────────────────────────────────────────────────────────
-          Expanded(
-            child: Stack(
-              children: [
-                if (_isLoadingLocation)
-                  _buildLoadingOverlay()
-                else if (_locationError.isNotEmpty)
-                  _buildErrorOverlay()
-                else
-                  GoogleMap(
-                    initialCameraPosition: CameraPosition(
-                      target:
-                          _currentPosition ?? const LatLng(20.5937, 78.9629),
-                      zoom: 15,
-                    ),
-                    onMapCreated: (ctrl) {
-                      if (!_mapController.isCompleted) {
-                        _mapController.complete(ctrl);
-                      }
-                    },
-                    markers: _markers,
-                    polylines: _polylines,
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: true,
-                    zoomControlsEnabled: false,
-                    mapToolbarEnabled: false,
-                    mapType: MapType.normal,
-                    onTap: (_) {
-                      if (!_isNavigating) {
-                        setState(() => _selectedPlace = null);
-                      }
-                    },
-                  ),
-
-                // ── Places loading indicator ──────────────────────────────
-                if (_isLoadingPlaces && !_isLoadingLocation)
-                  Positioned(
-                    top: 12,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: PawStayTheme.ambientShadow1,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: PawStayTheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Loading nearby places...',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: PawStayTheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // ── Paw trail badge (top-center) when NOT navigating ──────
-                if (!_isLoadingLocation &&
-                    _locationError.isEmpty &&
-                    !_isNavigating &&
-                    !_isLoadingPlaces)
-                  Positioned(
-                    top: 12,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: _PawPulseWidget(
-                        animation: _pulseAnimation,
-                        label: _currentCategoryLabel(),
-                      ),
-                    ),
-                  ),
-
-                // ── Routing loading indicator ──────────────────────────────
-                if (_isRouting)
-                  Positioned(
-                    top: 70,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: PawStayTheme.ambientShadow1,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: PawStayTheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Calculating route...',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: PawStayTheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // ── Live Navigation Bar (top) ──────────────────────────────
-                if (_isNavigating && _currentNavStep != null)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: _NavigationBar(
-                      step: _currentNavStep!,
-                      remainingDistance: _remainingDistance,
-                      remainingDuration: _remainingDuration,
-                      destinationName: _selectedPlace?.name ?? '',
-                      pawStep: _pawStep,
-                      onStop: _stopNavigation,
-                      onSimulateWalk: _startMovementSimulation,
-                      onOpenMaps: () {
-                        if (_selectedPlace != null) {
-                          _openNativeMaps(_selectedPlace!);
-                        }
-                      },
-                    ),
-                  ),
-
-                // ── Recenter FAB ───────────────────────────────────────────
-                if (!_isLoadingLocation && _locationError.isEmpty)
-                  Positioned(
-                    bottom: _isNavigating ? 24 : 24,
-                    right: 16,
-                    child: _buildMapFab(
-                      Icons.my_location_rounded,
-                      PawStayTheme.primary,
-                      _recenterMap,
-                      tooltip: 'My location',
-                    ),
-                  ),
-
-                // ── Clear Route button ─────────────────────────────────────
-                if (_routePoints.isNotEmpty && !_isRouting && !_isNavigating)
-                  Positioned(
-                    bottom: 24,
-                    left: 16,
-                    child: ElevatedButton.icon(
-                      onPressed: _stopNavigation,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: PawStayTheme.onSurface,
-                        elevation: 4,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        size: 16,
-                        color: PawStayTheme.error,
-                      ),
-                      label: Text(
-                        'Clear Route',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _currentCategoryLabel() {
-    if (_selectedCategoryId == 'all') return 'All Pet Services Nearby';
-    return _serviceCategories
-        .firstWhere(
-          (c) => c.id == _selectedCategoryId,
-          orElse: () => _serviceCategories.first,
-        )
-        .label;
-  }
-
-  Widget _buildLoadingOverlay() {
-    return Container(
-      color: PawStayTheme.background,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ScaleTransition(
-              scale: _pulseAnimation,
               child: const Icon(
-                Icons.pets,
-                size: 64,
-                color: PawStayTheme.primary,
+                Icons.navigation_rounded,
+                color: Colors.white,
+                size: 20,
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              'Finding your location...',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: PawStayTheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Please allow location access',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13,
-                color: PawStayTheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildErrorOverlay() {
-    return Container(
-      color: PawStayTheme.background,
-      padding: const EdgeInsets.all(32),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.location_off_rounded,
-              size: 64,
-              color: PawStayTheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Location Required',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: PawStayTheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _locationError,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 14,
-                color: PawStayTheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _isLoadingLocation = true;
-                  _locationError = '';
-                });
-                _initLocation();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: PawStayTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 14,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: const Icon(Icons.refresh_rounded),
-              label: Text(
-                'Try Again',
-                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMapFab(
-    IconData icon,
-    Color color,
-    VoidCallback onTap, {
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 46,
+      if (_destination case final point?)
+        Marker(
+          point: point,
+          width: 38,
           height: 46,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: PawStayTheme.ambientShadow2,
+          alignment: Alignment.topCenter,
+          child: const Icon(
+            Icons.location_on_rounded,
+            color: Color(0xFF242C38),
+            size: 42,
           ),
-          child: Icon(icon, color: color, size: 22),
         ),
-      ),
-    );
+    ];
+    return markers;
   }
-}
 
-// ─── Live Navigation Bar ──────────────────────────────────────────────────────
-class _NavigationBar extends StatelessWidget {
-  final NavStep step;
-  final String remainingDistance;
-  final String remainingDuration;
-  final String destinationName;
-  final int pawStep;
-  final VoidCallback onStop;
-  final VoidCallback? onSimulateWalk;
-  final VoidCallback onOpenMaps;
-
-  const _NavigationBar({
-    required this.step,
-    required this.remainingDistance,
-    required this.remainingDuration,
-    required this.destinationName,
-    required this.pawStep,
-    required this.onStop,
-    this.onSimulateWalk,
-    required this.onOpenMaps,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
+  List<Polyline> get _polylines {
+    if (_routePoints.length < 2) return const [];
+    final progressPosition = _routeProgressPosition;
+    final points = _isNavigating && progressPosition != null
+        ? [progressPosition, ..._routePoints.skip(_routeProgressIndex + 1)]
+        : _routePoints;
+    if (points.length < 2) return const [];
+    return [
+      Polyline(
+        points: points,
         color: PawStayTheme.primary,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: PawStayTheme.primary.withValues(alpha: 0.4),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        strokeWidth: 6,
+        borderColor: Colors.white,
+        borderStrokeWidth: 2,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Top row: instruction + stop button
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Paw trail animation widget
-              _PawTrailIndicator(pawStep: pawStep),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      step.instruction,
-                      style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${step.distance} · ${step.duration}',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: onStop,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
+    ];
+  }
+
+  Widget _serviceMarker(_ServiceCategory category) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: category.color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 8,
+                offset: Offset(0, 2),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          // Bottom row: total remaining + open in Google Maps
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: Icon(category.icon, color: Colors.white, size: 19),
+        ),
+        CustomPaint(
+          size: const Size(10, 7),
+          painter: _MarkerTailPainter(category.color),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopPanel() {
+    if (_isNavigating) return _buildNavigationGuidance();
+
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: Material(
+          color: colors.surface,
+          elevation: 5,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    Text(
-                      'To: $destinationName',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Text(
+                        _selectedCategory == 'all'
+                            ? 'Mapped pet services'
+                            : 'Mapped ${_categoryById(_selectedCategory).label.toLowerCase()}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    Text(
-                      '$remainingDistance away · ~$remainingDuration',
-                      style: GoogleFonts.plusJakartaSans(
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Showing ${_services.length} saved places at their supplied coordinates',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                _endpointField(
+                  endpoint: _Endpoint.source,
+                  icon: Icons.trip_origin_rounded,
+                  label: _sourceName,
+                  hint: 'Tap to choose the starting point',
+                ),
+                const SizedBox(height: 7),
+                _endpointField(
+                  endpoint: _Endpoint.destination,
+                  icon: Icons.location_on_rounded,
+                  label: _destinationName,
+                  hint: 'Tap to choose a destination',
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.touch_app_outlined,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _isPickingOnMap
+                            ? 'Tap the map to choose the ${_selectedEndpoint.name}.'
+                            : 'Tap a location above, then choose a point on the map.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_source != null && _destination != null)
+                      TextButton.icon(
+                        onPressed: _isLoadingRoute
+                            ? null
+                            : () => _requestRoute(),
+                        icon: _isLoadingRoute
+                            ? const SizedBox.square(
+                                dimension: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.route_rounded, size: 17),
+                        label: const Text('Route'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationGuidance() {
+    const guidanceColor = Color(0xFFD77D5A);
+    const nextInstructionColor = Color(0xFFBD6449);
+    final instruction = _currentInstruction;
+    final remainingToManeuver = instruction == null
+        ? 0.0
+        : (instruction.distanceFromStart - _routeProgressMeters)
+              .clamp(0.0, double.infinity)
+              .toDouble();
+    final nextInstructionIndex = _currentInstructionIndex + 1;
+    final nextInstruction = nextInstructionIndex < _routeInstructions.length
+        ? _routeInstructions[nextInstructionIndex]
+        : null;
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+        child: Material(
+          color: guidanceColor,
+          elevation: 8,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        _maneuverIcon(instruction?.maneuver ?? 'straight'),
                         color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        size: 30,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'towards',
+                            style: const TextStyle(
+                              color: Color(0xFFFFE6DC),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            instruction?.text ??
+                                'Continue to ${_destinationName.isEmpty ? 'your destination' : _destinationName}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              height: 1.15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            instruction == null
+                                ? 'Follow the highlighted route'
+                                : remainingToManeuver < 25
+                                ? 'Turn now'
+                                : 'In ${_formatDistance(remainingToManeuver)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFFFFE6DC),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-              if (onSimulateWalk != null) ...[
-                GestureDetector(
-                  onTap: onSimulateWalk,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.directions_walk_rounded,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Test Move',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              GestureDetector(
-                onTap: onOpenMaps,
-                child: Container(
+              if (nextInstruction != null)
+                Container(
+                  color: nextInstructionColor,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    horizontal: 18,
+                    vertical: 9,
                   ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.navigation_rounded,
-                        color: PawStayTheme.primary,
-                        size: 14,
+                      const Text(
+                        'Then',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Open Maps',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: PawStayTheme.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                      const SizedBox(width: 8),
+                      Icon(
+                        _maneuverIcon(nextInstruction.maneuver),
+                        color: Colors.white,
+                        size: 21,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          nextInstruction.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
-}
 
-// ─── Paw Trail Indicator (animated paw steps during navigation) ────────────────
-class _PawTrailIndicator extends StatelessWidget {
-  final int pawStep;
+  IconData _maneuverIcon(String modifier) => switch (modifier) {
+    'left' || 'slight left' || 'sharp left' => Icons.turn_left_rounded,
+    'right' || 'slight right' || 'sharp right' => Icons.turn_right_rounded,
+    'uturn' || 'u-turn' => Icons.u_turn_left_rounded,
+    'merge' => Icons.merge_rounded,
+    _ => Icons.straight_rounded,
+  };
 
-  const _PawTrailIndicator({required this.pawStep});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 52,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(4, (i) {
-          final isActive = i == pawStep;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            child: Icon(
-              Icons.pets,
-              size: isActive ? 18 : 10,
-              color: isActive
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.35),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-// ─── Paw Pulse Decorative Widget ─────────────────────────────────────────────
-class _PawPulseWidget extends StatelessWidget {
-  final Animation<double> animation;
-  final String label;
-
-  const _PawPulseWidget({required this.animation, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: PawStayTheme.ambientShadow1,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ScaleTransition(
-            scale: animation,
-            child: const Icon(
-              Icons.pets,
-              color: PawStayTheme.primary,
-              size: 18,
+  Widget _endpointField({
+    required _Endpoint endpoint,
+    required IconData icon,
+    required String label,
+    required String hint,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    final isSelected = _selectedEndpoint == endpoint;
+    return Material(
+      color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(13),
+        onTap: () => _beginMapPicking(endpoint),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: isSelected ? PawStayTheme.primary : colors.outlineVariant,
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: PawStayTheme.onSurface,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Place Bottom Sheet ───────────────────────────────────────────────────────
-class _PlaceBottomSheet extends StatelessWidget {
-  final PetServicePlace place;
-  final bool isRouting;
-  final VoidCallback onStartNavigation;
-  final VoidCallback onOpenMaps;
-
-  const _PlaceBottomSheet({
-    required this.place,
-    required this.isRouting,
-    required this.onStartNavigation,
-    required this.onOpenMaps,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: PawStayTheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Title row
-          Row(
+          child: Row(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: PawStayTheme.primaryContainer.withValues(alpha: 0.3),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.pets,
-                  color: PawStayTheme.primary,
-                  size: 26,
-                ),
+              Icon(
+                icon,
+                size: 20,
+                color: endpoint == _Endpoint.source
+                    ? colors.onSurfaceVariant
+                    : PawStayTheme.primary,
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 9),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      place.name,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: PawStayTheme.onSurface,
-                      ),
-                    ),
-                    if (place.address != null)
-                      Text(
-                        place.address!,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          color: PawStayTheme.onSurfaceVariant,
+                child: Text(
+                  label.isEmpty ? hint : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: label.isEmpty
+                        ? colors.onSurfaceVariant
+                        : colors.onSurface,
+                  ),
+                ),
+              ),
+              if (endpoint == _Endpoint.source)
+                IconButton(
+                  tooltip: 'Use my current location',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 36,
+                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: _currentPosition == null
+                      ? null
+                      : () => _setEndpoint(
+                          _Endpoint.source,
+                          _currentPosition!,
+                          'My current location',
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
+                  icon: const Icon(Icons.my_location_rounded, size: 19),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 16),
+        ),
+      ),
+    );
+  }
 
-          // Info pills
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+  void _beginMapPicking(_Endpoint endpoint) {
+    setState(() {
+      _selectedEndpoint = endpoint;
+      _isPickingOnMap = true;
+    });
+  }
+
+  Widget _buildCategoryFilters() {
+    final colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        scrollDirection: Axis.horizontal,
+        itemCount: _categories.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final category = _categories[index];
+          final selected = category.id == _selectedCategory;
+          return FilterChip(
+            selected: selected,
+            showCheckmark: false,
+            avatar: Icon(category.icon, size: 17, color: category.color),
+            label: Text(category.label),
+            selectedColor: category.color.withValues(alpha: 0.14),
+            backgroundColor: colors.surface,
+            side: BorderSide(
+              color: selected ? category.color : colors.outlineVariant,
+            ),
+            labelStyle: TextStyle(
+              color: selected ? category.color : colors.onSurface,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              fontSize: 12,
+            ),
+            onSelected: (_) => _selectCategory(category.id),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBottomCard() {
+    final colors = Theme.of(context).colorScheme;
+    final place = _selectedPlace;
+    final hasRoute = _routePoints.length > 1;
+    final distance = _isNavigating
+        ? _remainingDistanceMeters
+        : _routeDistanceMeters;
+    final duration = _isNavigating
+        ? _remainingDurationSeconds
+        : _routeDurationSeconds;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: Material(
+          color: Colors.white,
+          elevation: 7,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(15, _isNavigating ? 7 : 15, 15, 15),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isNavigating) ...[
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD4DAE2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                ],
+                _isNavigating
+                    ? _buildNavigationBottom(colors, distance, duration)
+                    : place != null
+                    ? _buildPlaceDetails(place, colors)
+                    : hasRoute
+                    ? _buildRouteDetails(colors, distance, duration)
+                    : _buildNearbySummary(colors),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationBottom(
+    ColorScheme colors,
+    double distance,
+    double duration,
+  ) {
+    final arrival = DateTime.now().add(Duration(seconds: duration.round()));
+    final arrivalText =
+        '${arrival.hour.toString().padLeft(2, '0')}:'
+        '${arrival.minute.toString().padLeft(2, '0')}';
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'End navigation',
+          onPressed: _stopNavigation,
+          style: IconButton.styleFrom(
+            foregroundColor: const Color(0xFF384354),
+            side: const BorderSide(color: Color(0xFFE0E5EC)),
+            shape: const CircleBorder(),
+            fixedSize: const Size(54, 54),
+          ),
+          icon: const Icon(Icons.close_rounded, size: 30),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (place.rating > 0)
-                _InfoPill(
-                  icon: Icons.star_rounded,
-                  text: place.rating.toStringAsFixed(1),
-                  color: const Color(0xFFF6A623),
+              Text(
+                _formatDuration(duration),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: const Color(0xFFE47B32),
+                  fontWeight: FontWeight.w700,
+                  height: 1,
                 ),
-              _InfoPill(
-                icon: Icons.directions_car_rounded,
-                text: place.distance,
-                color: PawStayTheme.primary,
               ),
-              _InfoPill(
-                icon: Icons.access_time_rounded,
-                text: place.openStatus,
-                color: place.openStatus.toLowerCase().startsWith('open')
-                    ? const Color(0xFF4CAF50)
-                    : const Color(0xFFBA1A1A),
+              const SizedBox(height: 4),
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
+                children: [
+                  Text(
+                    _formatDistance(distance),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF566174),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Text('·', style: TextStyle(color: Color(0xFF8993A2))),
+                  Text(
+                    arrivalText,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF566174),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Text('·', style: TextStyle(color: Color(0xFF8993A2))),
+                  const Icon(Icons.circle, size: 7, color: Color(0xFF36A873)),
+                  Text(
+                    'On route',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF36A873),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Recenter on my location',
+          onPressed: _currentPosition == null
+              ? null
+              : () {
+                  _mapController.move(_currentPosition!, 17);
+                  _mapController.rotate(-_headingDegrees);
+                },
+          style: IconButton.styleFrom(
+            foregroundColor: const Color(0xFF438BFF),
+            backgroundColor: const Color(0xFFE8F1FF),
+            shape: const CircleBorder(),
+            fixedSize: const Size(54, 54),
+          ),
+          icon: const Icon(Icons.navigation_rounded),
+        ),
+      ],
+    );
+  }
 
-          const SizedBox(height: 24),
-
-          // Action buttons
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: isRouting ? null : onStartNavigation,
-              icon: isRouting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.navigation_rounded, size: 18),
-              label: Text(
-                isRouting ? 'Getting route...' : 'Start Navigation',
-                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
+  Widget _buildNearbySummary(ColorScheme colors) {
+    final count = _visibleServices.length;
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: PawStayTheme.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.pets_rounded, color: PawStayTheme.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _isLoadingLocation
+                    ? 'Finding your location…'
+                    : _locationError.isNotEmpty
+                    ? 'Location unavailable'
+                    : _selectedCategory == 'all'
+                    ? '$count mapped pet services'
+                    : '$count mapped ${_categoryById(_selectedCategory).label.toLowerCase()}',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: PawStayTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 3),
+              Text(
+                _locationError.isNotEmpty
+                    ? _locationError
+                    : 'Pins use the saved latitude and longitude coordinates.',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Center on my location',
+          onPressed: _currentPosition == null
+              ? _initializeLocation
+              : () => _mapController.move(_currentPosition!, 15),
+          icon: const Icon(Icons.my_location_rounded),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRouteDetails(
+    ColorScheme colors,
+    double distance,
+    double duration,
+  ) {
+    final arrival = DateTime.now().add(Duration(seconds: duration.round()));
+    final arrivalText =
+        '${arrival.hour.toString().padLeft(2, '0')}:'
+        '${arrival.minute.toString().padLeft(2, '0')}';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _isNavigating ? 'Live navigation' : 'Route overview',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            if (_isNavigating)
+              TextButton(onPressed: _stopNavigation, child: const Text('End'))
+            else
+              FilledButton.icon(
+                onPressed: _isLoadingRoute ? null : _startNavigation,
+                icon: const Icon(Icons.navigation_rounded, size: 18),
+                label: const Text('Start'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Row(
+          children: [
+            _routeMetric(
+              icon: Icons.route_rounded,
+              value: _formatDistance(distance),
+              label: 'remaining',
+              colors: colors,
+            ),
+            const SizedBox(width: 18),
+            _routeMetric(
+              icon: Icons.schedule_rounded,
+              value: _formatDuration(duration),
+              label: 'estimated',
+              colors: colors,
+            ),
+            const SizedBox(width: 18),
+            _routeMetric(
+              icon: Icons.flag_rounded,
+              value: arrivalText,
+              label: 'arrival',
+              colors: colors,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Driving route via OSRM · ETA adjusts with your live position',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  Widget _routeMetric({
+    required IconData icon,
+    required String value,
+    required String label,
+    required ColorScheme colors,
+  }) {
+    return Expanded(
+      child: Row(
+        children: [
+          Icon(icon, size: 17, color: PawStayTheme.primary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceDetails(_PetService place, ColorScheme colors) {
+    final category = _categoryById(place.categoryId);
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: category.color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(category.icon, color: category.color),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                place.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${category.label} · '
+                '${place.position.latitude.toStringAsFixed(6)}, '
+                '${place.position.longitude.toStringAsFixed(6)}'
+                '${place.address.isEmpty ? '' : ' · ${place.address}'}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Route to this place',
+          onPressed: () {
+            _setEndpoint(_Endpoint.destination, place.position, place.name);
+            setState(() => _selectedPlace = null);
+          },
+          icon: const Icon(Icons.directions_rounded),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMapControls() {
+    if (_isNavigating) {
+      return Positioned(
+        right: 14,
+        bottom: 128,
+        child: FloatingActionButton.small(
+          heroTag: 'navigation_recenter',
+          tooltip: 'Recenter on my location',
+          onPressed: _currentPosition == null
+              ? null
+              : () {
+                  _mapController.move(_currentPosition!, 17);
+                  _mapController.rotate(-_headingDegrees);
+                },
+          child: const Icon(Icons.my_location_rounded),
+        ),
+      );
+    }
+
+    return Positioned(
+      right: 14,
+      bottom: 170,
+      child: Column(
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'map_zoom_in',
+            tooltip: 'Zoom in',
+            onPressed: () => _mapController.move(
+              _mapController.camera.center,
+              _mapController.camera.zoom + 1,
+            ),
+            child: const Icon(Icons.add_rounded),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.small(
+            heroTag: 'map_location',
+            tooltip: 'Center on my location',
+            onPressed: _currentPosition == null
+                ? _initializeLocation
+                : () => _mapController.move(
+                    _currentPosition!,
+                    math.max(_mapController.camera.zoom, 15).toDouble(),
+                  ),
+            child: const Icon(Icons.my_location_rounded),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.small(
+            heroTag: 'map_pick',
+            tooltip: 'Pick a point on the map',
+            backgroundColor: _isPickingOnMap
+                ? PawStayTheme.primary
+                : Theme.of(context).colorScheme.surface,
+            foregroundColor: _isPickingOnMap
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurface,
+            onPressed: () => setState(() {
+              _isPickingOnMap = !_isPickingOnMap;
+              if (_isPickingOnMap) {
+                _selectedPlace = null;
+              }
+            }),
+            child: const Icon(Icons.add_location_alt_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatDistance(double meters) {
+    if (meters < 1000) return '${meters.round()} m';
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  static String _formatDuration(double seconds) {
+    final minutes = (seconds / 60).ceil();
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    return remainingMinutes == 0
+        ? '${hours}h'
+        : '${hours}h ${remainingMinutes}m';
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: _isNavigating
+          ? null
+          : AppBar(title: const Text('Pet services map')),
+      body: Stack(
+        children: [
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: _currentPosition ?? _initialMapCenter,
+              initialZoom: _currentPosition == null ? 12 : 14,
+              onTap: _onMapTap,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.flutter_application_1',
+                maxZoom: 19,
+              ),
+              if (_polylines.isNotEmpty) PolylineLayer(polylines: _polylines),
+              MarkerLayer(markers: _markers),
+            ],
+          ),
+          Column(
+            children: [
+              _buildTopPanel(),
+              if (!_isNavigating) ...[
+                const SizedBox(height: 8),
+                _buildCategoryFilters(),
+              ],
+              const Spacer(),
+              _buildBottomCard(),
+            ],
+          ),
+          _buildMapControls(),
+          Positioned(
+            right: 14,
+            bottom: 145,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.surface.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                child: Text(
+                  '© OpenStreetMap contributors',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontSize: 9,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onOpenMaps,
-              icon: const Icon(Icons.map_outlined, size: 18),
-              label: Text(
-                'Open in Google Maps',
-                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom),
         ],
       ),
     );
   }
 }
 
-class _InfoPill extends StatelessWidget {
-  final IconData icon;
-  final String text;
+class _LocationException implements Exception {
+  const _LocationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class HttpException implements Exception {
+  const HttpException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+_ServiceCategory _categoryById(String id) =>
+    _categories.firstWhere((category) => category.id == id);
+
+class _MarkerTailPainter extends CustomPainter {
+  const _MarkerTailPainter(this.color);
+
   final Color color;
 
-  const _InfoPill({
-    required this.icon,
-    required this.text,
-    required this.color,
-  });
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = ui.Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width, 0)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  bool shouldRepaint(_MarkerTailPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
