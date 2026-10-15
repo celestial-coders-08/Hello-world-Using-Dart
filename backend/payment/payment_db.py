@@ -12,6 +12,7 @@ def create_payment_order(
     buyer_name: str,
     razorpay_order_id: str,
     amount_paise: int,
+    shipping_address: str = "",
     items: list[dict] | None = None,
     product_id: int | None = None,
 ) -> dict | None:
@@ -64,8 +65,8 @@ def create_payment_order(
             INSERT INTO marketplace_payments (
                 order_code, product_id, seller_lookup, buyer_user_id,
                 buyer_email, buyer_name, product_name, razorpay_order_id,
-                amount_paise, payment_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
+                amount_paise, shipping_address, payment_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
             """,
             (
                 order_code,
@@ -77,6 +78,7 @@ def create_payment_order(
                 first_product["name"],
                 razorpay_order_id,
                 amount_paise,
+                shipping_address,
             ),
         )
         payment_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -225,9 +227,10 @@ def finalize_payment(
                 """
                 INSERT INTO seller_orders (
                     seller_lookup, order_code, customer_name, total_amount, quantity,
-                    order_status, payment_status, buyer_user_id, customer_email,
-                    product_id, product_name, razorpay_order_id, razorpay_payment_id
-                ) VALUES (?, ?, ?, ?, ?, 'Pending', 'Paid', ?, ?, ?, ?, ?, ?)
+                    shipping_address, order_status, payment_status, buyer_user_id,
+                    customer_email, product_id, product_name, razorpay_order_id,
+                    razorpay_payment_id
+                ) VALUES (?, ?, ?, ?, ?, ?, 'Pending', 'Paid', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item["seller_lookup"],
@@ -235,6 +238,7 @@ def finalize_payment(
                     payment["buyer_name"],
                     line_amount,
                     item["quantity"],
+                    payment["shipping_address"],
                     payment["buyer_user_id"],
                     payment["buyer_email"],
                     item["product_id"],

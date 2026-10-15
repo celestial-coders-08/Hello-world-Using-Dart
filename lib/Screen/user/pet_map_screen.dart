@@ -1970,7 +1970,7 @@ class _PetMapScreenState extends State<PetMapScreen> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                 child: Text(
-                  '© OpenStreetMap contributors',
+                  '© PawStay Map 2026 ',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     fontSize: 9,
                     color: colors.onSurfaceVariant,

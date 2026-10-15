@@ -50,18 +50,122 @@ class RazorpayCheckoutSheet extends StatefulWidget {
 }
 
 class _RazorpayCheckoutSheetState extends State<RazorpayCheckoutSheet> {
+  final _addressFormKey = GlobalKey<FormState>();
+  final _apartmentFlatController = TextEditingController();
+  final _streetAddressController = TextEditingController();
+  final _stateController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _postalCodeController = TextEditingController();
   WebViewController? _webViewController;
   Map<String, dynamic>? _checkoutOrder;
+  Map<String, dynamic>? _buyerAddress;
   Map<String, dynamic>? _pendingPayment;
   String? _error;
   bool _isLoading = true;
+  bool _isLoadingAddress = true;
+  bool _isSavingAddress = false;
+  bool _isEditingAddress = false;
+  bool _addressConfirmed = false;
   bool _isVerifying = false;
   bool _finished = false;
 
   @override
   void initState() {
     super.initState();
-    _prepareCheckout();
+    _loadBuyerAddress();
+  }
+
+  @override
+  void dispose() {
+    _apartmentFlatController.dispose();
+    _streetAddressController.dispose();
+    _stateController.dispose();
+    _cityController.dispose();
+    _postalCodeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadBuyerAddress() async {
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      setState(() {
+        _error =
+            'Secure Razorpay checkout is currently supported on Android and iOS.';
+        _isLoading = false;
+        _isLoadingAddress = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _error = null;
+      _isLoadingAddress = true;
+    });
+    try {
+      final address = await PaymentApiService.fetchBuyerAddress();
+      if (!mounted) return;
+      _buyerAddress = address;
+      if (address == null) {
+        _isEditingAddress = true;
+      } else {
+        _setAddressFields(address);
+      }
+      setState(() {
+        _isLoadingAddress = false;
+        _isLoading = false;
+      });
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString().replaceFirst('Exception: ', '');
+        _isLoadingAddress = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _setAddressFields(Map<String, dynamic> address) {
+    _apartmentFlatController.text = address['apartment_flat']?.toString() ?? '';
+    _streetAddressController.text = address['street_address']?.toString() ?? '';
+    _stateController.text = address['state']?.toString() ?? '';
+    _cityController.text = address['city']?.toString() ?? '';
+    _postalCodeController.text = address['postal_code']?.toString() ?? '';
+  }
+
+  Future<void> _saveAddressAndContinue() async {
+    if (_isSavingAddress ||
+        !(_addressFormKey.currentState?.validate() ?? false)) {
+      return;
+    }
+    setState(() {
+      _isSavingAddress = true;
+      _error = null;
+    });
+    try {
+      final address = await PaymentApiService.saveBuyerAddress(
+        apartmentFlat: _apartmentFlatController.text.trim(),
+        streetAddress: _streetAddressController.text.trim(),
+        state: _stateController.text.trim(),
+        city: _cityController.text.trim(),
+        postalCode: _postalCodeController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _buyerAddress = address;
+        _isSavingAddress = false;
+        _isEditingAddress = false;
+        _addressConfirmed = true;
+        _isLoading = true;
+      });
+      await _prepareCheckout();
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString().replaceFirst('Exception: ', '');
+        _isSavingAddress = false;
+      });
+    }
   }
 
   Future<void> _prepareCheckout() async {
@@ -88,6 +192,7 @@ class _RazorpayCheckoutSheetState extends State<RazorpayCheckoutSheet> {
         }
         return;
       }
+      if (!_addressConfirmed) return;
       final order = cartItems != null
           ? await PaymentApiService.createCartCheckoutOrder(cartItems)
           : await PaymentApiService.createCheckoutOrder(productId!);
@@ -304,6 +409,151 @@ class _RazorpayCheckoutSheetState extends State<RazorpayCheckoutSheet> {
     }
   }
 
+  Widget _addressField(
+    String label,
+    TextEditingController controller, {
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Color.fromARGB(179, 2, 2, 2)),
+          enabledBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFF475569)),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFFD85F3D)),
+          ),
+          errorStyle: const TextStyle(color: Color(0xFFFCA5A5)),
+        ),
+        validator: (value) =>
+            value == null || value.trim().isEmpty ? 'Required' : null,
+      ),
+    );
+  }
+
+  Widget _addressEditor() {
+    return Form(
+      key: _addressFormKey,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            _buyerAddress == null ? 'Delivery address' : 'Edit address',
+            style: GoogleFonts.plusJakartaSans(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Save your delivery address before placing the order.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 18),
+          _addressField('Apartment / Flat No.', _apartmentFlatController),
+          _addressField('Street address', _streetAddressController),
+          _addressField('City', _cityController),
+          _addressField('State', _stateController),
+          _addressField(
+            'Postal code',
+            _postalCodeController,
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _isSavingAddress ? null : _saveAddressAndContinue,
+            child: _isSavingAddress
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save address & continue to payment'),
+          ),
+          if (_buyerAddress != null) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _isEditingAddress = false;
+                  _error = null;
+                });
+              },
+              child: const Text(
+                'Cancel editing',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _savedAddressPrompt() {
+    final address = _buyerAddress!;
+    final addressText = [
+      address['apartment_flat'],
+      address['street_address'],
+      address['city'],
+      address['state'],
+      address['postal_code'],
+    ].where((part) => part != null && part.toString().isNotEmpty).join(', ');
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Deliver to your saved address?',
+              style: GoogleFonts.plusJakartaSans(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(addressText, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  _addressConfirmed = true;
+                  _isLoading = true;
+                  _error = null;
+                });
+                _prepareCheckout();
+              },
+              child: const Text('Use this address'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _isEditingAddress = true;
+                  _error = null;
+                });
+              },
+              child: const Text(
+                'Edit address',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final amount = _checkoutOrder?['amount_paise'] is num
@@ -375,7 +625,11 @@ class _RazorpayCheckoutSheetState extends State<RazorpayCheckoutSheet> {
                           ] else if (_checkoutOrder == null) ...[
                             const SizedBox(height: 16),
                             FilledButton(
-                              onPressed: _isLoading ? null : _prepareCheckout,
+                              onPressed: _isLoading
+                                  ? null
+                                  : _addressConfirmed
+                                  ? _prepareCheckout
+                                  : _loadBuyerAddress,
                               child: const Text('Try again'),
                             ),
                           ],
@@ -383,6 +637,14 @@ class _RazorpayCheckoutSheetState extends State<RazorpayCheckoutSheet> {
                       ),
                     ),
                   )
+                : _isLoadingAddress
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFFD85F3D)),
+                  )
+                : !_addressConfirmed && _buyerAddress != null
+                ? _savedAddressPrompt()
+                : _isEditingAddress
+                ? _addressEditor()
                 : _webViewController == null
                 ? Center(
                     child: Column(

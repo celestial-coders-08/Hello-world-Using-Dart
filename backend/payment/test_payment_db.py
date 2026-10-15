@@ -28,6 +28,17 @@ class PaymentDatabaseTests(unittest.TestCase):
         self._temp_dir.cleanup()
 
     def test_payment_is_linked_to_buyer_and_seller_order(self):
+        address = seller_db.save_buyer_address(
+            27,
+            {
+                "apartment_flat": "Flat 12",
+                "street_address": "12 Pet Lane",
+                "state": "Karnataka",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+            },
+        )
+        self.assertEqual(seller_db.get_buyer_address(27), address)
         payment_order = payment_db.create_payment_order(
             product_id=self.product["id"],
             user_id=27,
@@ -35,6 +46,9 @@ class PaymentDatabaseTests(unittest.TestCase):
             buyer_name="Buyer Name",
             razorpay_order_id="order_abc123",
             amount_paise=1250,
+            shipping_address=(
+                "Flat 12, 12 Pet Lane, Bengaluru, Karnataka, 560001"
+            ),
         )
 
         self.assertIsNotNone(payment_order)
@@ -72,6 +86,27 @@ class PaymentDatabaseTests(unittest.TestCase):
         self.assertEqual(orders[0]["buyer_user_id"], 27)
         self.assertEqual(orders[0]["customer_email"], "buyer@example.com")
         self.assertEqual(orders[0]["payment_status"], "Paid")
+        self.assertEqual(
+            orders[0]["shipping_address"],
+            "Flat 12, 12 Pet Lane, Bengaluru, Karnataka, 560001",
+        )
+        seller_db.save_buyer_address(
+            27,
+            {
+                "apartment_flat": "Flat 34",
+                "street_address": "50 New Pet Road",
+                "state": "Maharashtra",
+                "city": "Mumbai",
+                "postal_code": "400001",
+            },
+        )
+        self.assertEqual(
+            seller_db.list_orders("seller-one")[0]["shipping_address"],
+            "Flat 12, 12 Pet Lane, Bengaluru, Karnataka, 560001",
+        )
+        self.assertEqual(
+            seller_db.get_buyer_address(27)["apartment_flat"], "Flat 34"
+        )
         buyer_orders = payment_db.get_buyer_orders(27)
         self.assertEqual(buyer_orders[0]["order_code"], completed["order_code"])
         self.assertEqual(buyer_orders[0]["order_status"], "Pending")

@@ -20,17 +20,53 @@ class PaymentApiService {
     return List<Map<String, dynamic>>.from(decoded as List);
   }
 
-  static Future<Map<String, dynamic>> createCheckoutOrder(
-    int productId,
-  ) async {
+  static Future<Map<String, dynamic>> createCheckoutOrder(int productId) async {
     return _createCheckoutOrder({'product_id': productId});
+  }
+
+  static Future<Map<String, dynamic>?> fetchBuyerAddress() async {
+    final response = await _client
+        .get(
+          Uri.parse('${ApiConfig.paymentBaseUrl}/payments/address'),
+          headers: await _authenticatedHeaders(),
+        )
+        .timeout(_timeout);
+    final decoded = _decodeResponse(response);
+    return decoded == null ? null : Map<String, dynamic>.from(decoded as Map);
+  }
+
+  static Future<Map<String, dynamic>> saveBuyerAddress({
+    required String apartmentFlat,
+    required String streetAddress,
+    required String state,
+    required String city,
+    required String postalCode,
+  }) async {
+    final response = await _client
+        .put(
+          Uri.parse('${ApiConfig.paymentBaseUrl}/payments/address'),
+          headers: await _authenticatedHeaders(),
+          body: jsonEncode({
+            'apartment_flat': apartmentFlat,
+            'street_address': streetAddress,
+            'state': state,
+            'city': city,
+            'postal_code': postalCode,
+          }),
+        )
+        .timeout(_timeout);
+    return Map<String, dynamic>.from(_decodeResponse(response) as Map);
   }
 
   static Future<Map<String, dynamic>> createCartCheckoutOrder(
     List<Map<String, int>> items,
   ) async {
     if (items.isEmpty) {
-      throw ArgumentError.value(items, 'items', 'A checkout cart cannot be empty.');
+      throw ArgumentError.value(
+        items,
+        'items',
+        'A checkout cart cannot be empty.',
+      );
     }
     return _createCheckoutOrder({'items': items});
   }

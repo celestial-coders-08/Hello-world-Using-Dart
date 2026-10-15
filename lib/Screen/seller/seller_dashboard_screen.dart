@@ -8,9 +8,9 @@ import '../../widgets/animated_ai_nav_icon.dart';
 import '../auth/login.dart';
 import 'add_product_screen.dart';
 import 'analytics_screen.dart';
+import 'order_request.dart';
 import 'profile.dart';
 import 'seller_ai_assistant_screen.dart';
-import 'seller_orders_screen.dart';
 import 'seller_products_screen.dart';
 import 'seller_verification_screen.dart';
 
@@ -326,7 +326,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                 _closeDrawerIfNeeded();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => SellerOrdersScreen(
+                    builder: (_) => SellerOrderRequestScreen(
                       sellerLookup: widget.sellerLookup,
                       onOrdersChanged: _loadOverview,
                     ),

@@ -24,7 +24,13 @@ from payment.payment_db import (
     finalize_payment,
     get_buyer_orders,
 )
-from seller.seller_db import connection, _decode_product, initialize_database
+from seller.seller_db import (
+    connection,
+    _decode_product,
+    get_buyer_address,
+    initialize_database,
+    save_buyer_address,
+)
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 initialize_database()
@@ -104,6 +110,24 @@ class VerifyPaymentRequest(BaseModel):
     @classmethod
     def valid_payment_id(cls, value: str) -> str:
         return cls._validate_gateway_id(value, "pay_")
+
+
+class BuyerAddressRequest(BaseModel):
+    apartment_flat: str = Field(min_length=1, max_length=200)
+    street_address: str = Field(min_length=1, max_length=300)
+    state: str = Field(min_length=1, max_length=100)
+    city: str = Field(min_length=1, max_length=100)
+    postal_code: str = Field(min_length=1, max_length=20)
+
+    @field_validator(
+        "apartment_flat", "street_address", "state", "city", "postal_code"
+    )
+    @classmethod
+    def address_fields_are_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Address fields cannot be blank.")
+        return value
 
 
 def _current_user(authorization: str | None) -> User:
@@ -208,12 +232,42 @@ def marketplace_products():
     return [_decode_product(dict(row)) for row in rows]
 
 
+@router.get("/payments/address")
+def buyer_address(authorization: str | None = Header(default=None)):
+    user = _current_user(authorization)
+    return get_buyer_address(user.id)
+
+
+@router.put("/payments/address")
+def update_buyer_address(
+    payload: BuyerAddressRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _current_user(authorization)
+    return save_buyer_address(user.id, payload.model_dump())
+
+
 @router.post("/payments/orders", status_code=201)
 def create_checkout_order(
     payload: CreateOrderRequest,
     authorization: str | None = Header(default=None),
 ):
     user = _current_user(authorization)
+    saved_address = get_buyer_address(user.id)
+    if saved_address is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Save a shipping address before placing your order.",
+        )
+    shipping_address = ", ".join(
+        [
+            saved_address["apartment_flat"],
+            saved_address["street_address"],
+            saved_address["city"],
+            saved_address["state"],
+            saved_address["postal_code"],
+        ]
+    )
     expire_pending_payments()
     items = payload.checkout_items()
     product_ids = [item["product_id"] for item in items]
@@ -272,6 +326,7 @@ def create_checkout_order(
         buyer_name=user.full_name,
         razorpay_order_id=razorpay_order_id,
         amount_paise=amount_paise,
+        shipping_address=shipping_address,
     )
     if payment_order is None:
         raise HTTPException(

@@ -104,6 +104,19 @@ def connection() -> Iterator[sqlite3.Connection]:
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS buyer_addresses (
+                buyer_user_id INTEGER PRIMARY KEY,
+                apartment_flat TEXT NOT NULL,
+                street_address TEXT NOT NULL,
+                state TEXT NOT NULL,
+                city TEXT NOT NULL,
+                postal_code TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS seller_verifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 seller_lookup TEXT NOT NULL UNIQUE,
@@ -209,6 +222,11 @@ def connection() -> Iterator[sqlite3.Connection]:
         if "product_name" not in payment_columns:
             db.execute(
                 "ALTER TABLE marketplace_payments ADD COLUMN product_name "
+                "TEXT NOT NULL DEFAULT ''"
+            )
+        if "shipping_address" not in payment_columns:
+            db.execute(
+                "ALTER TABLE marketplace_payments ADD COLUMN shipping_address "
                 "TEXT NOT NULL DEFAULT ''"
             )
         db.commit()
@@ -425,6 +443,45 @@ def list_orders(seller_lookup: str) -> list[dict]:
             (seller_lookup,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_buyer_address(buyer_user_id: int) -> dict | None:
+    with connection() as db:
+        row = db.execute(
+            "SELECT apartment_flat, street_address, state, city, postal_code "
+            "FROM buyer_addresses WHERE buyer_user_id = ?",
+            (buyer_user_id,),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def save_buyer_address(buyer_user_id: int, address: dict) -> dict:
+    with connection() as db:
+        db.execute(
+            """
+            INSERT INTO buyer_addresses (
+                buyer_user_id, apartment_flat, street_address, state, city,
+                postal_code, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(buyer_user_id) DO UPDATE SET
+                apartment_flat = excluded.apartment_flat,
+                street_address = excluded.street_address,
+                state = excluded.state,
+                city = excluded.city,
+                postal_code = excluded.postal_code,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                buyer_user_id,
+                address["apartment_flat"],
+                address["street_address"],
+                address["state"],
+                address["city"],
+                address["postal_code"],
+            ),
+        )
+        db.commit()
+    return get_buyer_address(buyer_user_id)
 
 
 def update_order_status(

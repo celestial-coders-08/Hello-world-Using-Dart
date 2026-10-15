@@ -170,6 +170,8 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                       final isUpdating = _updatingOrderId == orderId;
                       final paymentStatus =
                           order['payment_status']?.toString() ?? 'Pending';
+                      final shippingAddress =
+                          order['shipping_address']?.toString().trim() ?? '';
                       return Card(
                         margin: const EdgeInsets.only(bottom: 14),
                         child: Padding(
@@ -261,16 +263,49 @@ class _SellerOrdersScreenState extends State<SellerOrdersScreen> {
                                   ),
                                 ],
                               ),
-                              if ((order['shipping_address']?.toString() ?? '')
-                                  .isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                _detail(
-                                  context,
-                                  Icons.location_on_outlined,
-                                  'Shipping address',
-                                  order['shipping_address'].toString(),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceContainerHighest
+                                      .withValues(alpha: 0.45),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                              ],
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.location_on_outlined,
+                                          size: 18,
+                                          color: colors.primary,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Delivery address',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelLarge
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    SelectableText(
+                                      shippingAddress.isEmpty
+                                          ? 'No delivery address was recorded for this order.'
+                                          : shippingAddress,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
+                                    ),
+                                  ],
+                                ),
+                              ),
                               const Divider(height: 24),
                               Row(
                                 children: [

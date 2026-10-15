@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
+import '../../widgets/animated_ai_nav_icon.dart';
 import 'profile_screen.dart';
 import 'sitter_profile_screen.dart';
 
@@ -281,6 +282,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: const Color(
         0xFFFFF9F6,
@@ -354,7 +356,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
       // Standard Bottom Navigation Bar matching HomeScreen
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surfaceContainer,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -366,9 +368,9 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         child: BottomNavigationBar(
           currentIndex: 0,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
+          backgroundColor: colors.surfaceContainer,
           selectedItemColor: PawStayTheme.primary,
-          unselectedItemColor: PawStayTheme.onSurfaceVariant,
+          unselectedItemColor: colors.onSurfaceVariant,
           selectedLabelStyle: GoogleFonts.plusJakartaSans(
             fontWeight: FontWeight.bold,
             fontSize: 11,
@@ -393,11 +395,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
               activeIcon: Icon(Icons.shopping_bag_rounded),
               label: 'Shop',
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.android_outlined),
-              activeIcon: Icon(Icons.android_rounded),
-              label: 'AI',
-            ),
+            BottomNavigationBarItem(icon: AnimatedAiNavIcon(), label: 'AI'),
           ],
           onTap: (index) {
             Navigator.pop(context, index);
