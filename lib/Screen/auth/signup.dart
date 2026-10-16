@@ -392,7 +392,7 @@ class _SignupScreenState extends State<SignupScreen>
   bool _obscureConfirmPassword = true;
 
   String _selectedRole = 'User';
-  final List<String> _roles = ['User', 'Pet Service', 'Seller', 'Doctor'];
+  final List<String> _roles = ['User', 'Pet Service', 'Seller'];
 
   bool _isLoading = false;
 
