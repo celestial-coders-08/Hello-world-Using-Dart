@@ -1005,7 +1005,7 @@ class _SignupScreenState extends State<SignupScreen>
                               keyboardType: TextInputType.number,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(10),
+                                LengthLimitingTextInputFormatter(6),
                               ],
                               style: _inputStyle(),
                               decoration: InputDecoration(
@@ -1019,8 +1019,8 @@ class _SignupScreenState extends State<SignupScreen>
                                 if (v == null || v.trim().isEmpty) {
                                   return 'Please enter your postal code';
                                 }
-                                if (v.length < 4) {
-                                  return 'Postal code is too short';
+                                if (v.length != 6) {
+                                  return 'Postal code must be exactly 6 digits';
                                 }
                                 return null;
                               },

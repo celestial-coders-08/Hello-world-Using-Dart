@@ -55,3 +55,6 @@ build_old/
 web/
 animated_svg.html
 Maps_Data/
+# Widget Preview related
+.widget_preview/
+devtools_options.yaml

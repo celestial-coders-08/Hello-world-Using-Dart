@@ -137,8 +137,8 @@ class SignupRequest(BaseModel):
         v = v.strip()
         if not v.isdigit():
             raise ValueError("Postal code must contain digits only.")
-        if len(v) < 4 or len(v) > 10:
-            raise ValueError("Postal code must be between 4 and 10 digits.")
+        if len(v) != 6:
+            raise ValueError("Postal code must be exactly 6 digits.")
         return v
 
     @field_validator("full_name", "state", "city", "role")
