@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/seller_api_service.dart';
+import '../../services/session_service.dart';
 import '../../theme/pawstay_theme.dart';
 import '../../widgets/animated_ai_nav_icon.dart';
 import '../auth/login.dart';
@@ -27,6 +27,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   int _selectedIndex = 0;
+  final Set<int> _loadedSections = {0};
   bool _isLoading = true;
   String? _error;
   late String _displayName;
@@ -145,6 +146,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       _listingTypeFilter = type;
       _animalTypeFilter = animal;
       _selectedIndex = 1;
+      _loadedSections.add(1);
     });
     _closeDrawerIfNeeded();
   }
@@ -157,6 +159,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
 
     setState(() {
       _selectedIndex = index;
+      _loadedSections.add(index);
       if (index != 1) {
         _listingTypeFilter = null;
         _animalTypeFilter = null;
@@ -193,24 +196,32 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
               index: _selectedIndex,
               children: [
                 _buildOverview(context),
-                SellerProductsScreen(
-                  key: ValueKey('$_listingTypeFilter-$_animalTypeFilter'),
-                  sellerLookup: widget.sellerLookup,
-                  listingTypeFilter: _listingTypeFilter,
-                  animalTypeFilter: _animalTypeFilter,
-                  onAddProduct: _handleSellAction,
-                  onProductsChanged: _loadOverview,
-                ),
-                AddProductScreen(
-                  sellerLookup: widget.sellerLookup,
-                  onCancel: () => _selectPage(0),
-                  onSuccess: () {
-                    _loadOverview();
-                    _selectPage(1);
-                  },
-                ),
-                AnalyticsScreen(sellerLookup: widget.sellerLookup),
-                SellerAiAssistantScreen(sellerLookup: widget.sellerLookup),
+                _loadedSections.contains(1)
+                    ? SellerProductsScreen(
+                        key: ValueKey('$_listingTypeFilter-$_animalTypeFilter'),
+                        sellerLookup: widget.sellerLookup,
+                        listingTypeFilter: _listingTypeFilter,
+                        animalTypeFilter: _animalTypeFilter,
+                        onAddProduct: _handleSellAction,
+                        onProductsChanged: _loadOverview,
+                      )
+                    : const SizedBox.shrink(),
+                _loadedSections.contains(2)
+                    ? AddProductScreen(
+                        sellerLookup: widget.sellerLookup,
+                        onCancel: () => _selectPage(0),
+                        onSuccess: () {
+                          _loadOverview();
+                          _selectPage(1);
+                        },
+                      )
+                    : const SizedBox.shrink(),
+                _loadedSections.contains(3)
+                    ? AnalyticsScreen(sellerLookup: widget.sellerLookup)
+                    : const SizedBox.shrink(),
+                _loadedSections.contains(4)
+                    ? SellerAiAssistantScreen(sellerLookup: widget.sellerLookup)
+                    : const SizedBox.shrink(),
               ],
             ),
           ),
@@ -396,8 +407,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.remove('access_token');
+    await SessionService.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

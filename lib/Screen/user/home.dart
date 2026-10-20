@@ -28,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
+  final Set<int> _loadedNavTabs = {0};
   String _displayName = 'Pet Parent';
   bool _isLoadingUser = false;
   String? _userProfileImageBase64;
@@ -212,11 +213,15 @@ class _HomeScreenState extends State<HomeScreen> {
           index: _currentNavIndex,
           children: [
             _buildDashboard(isDesktop),
-            ChatScreen(
-              userLookup: widget.userLookup,
-              onBackPressed: () => setState(() => _currentNavIndex = 0),
-            ),
-            ShopScreen(userLookup: widget.userLookup),
+            _loadedNavTabs.contains(1)
+                ? ChatScreen(
+                    userLookup: widget.userLookup,
+                    onBackPressed: () => setState(() => _currentNavIndex = 0),
+                  )
+                : const SizedBox.shrink(),
+            _loadedNavTabs.contains(2)
+                ? ShopScreen(userLookup: widget.userLookup)
+                : const SizedBox.shrink(),
             const Center(child: Text('AI Assistant coming soon')),
           ],
         ),
@@ -270,6 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: (index) {
               setState(() {
                 _currentNavIndex = index;
+                _loadedNavTabs.add(index);
               });
               if (index == 3) {
                 // AI Agent — coming soon

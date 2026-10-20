@@ -25,6 +25,7 @@ class ProviderDashboardScreen extends StatefulWidget {
 
 class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   int _currentNavIndex = 0;
+  final Set<int> _loadedNavTabs = {0};
   String _displayName = 'Service Provider';
   String? _profileImageBase64;
   bool _isProfileComplete = false;
@@ -331,11 +332,18 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
             index: _currentNavIndex,
             children: [
               _buildDashboardHome(),
-              ChatScreen(
-                userLookup: widget.providerLookup,
-                onBackPressed: () => setState(() => _currentNavIndex = 0),
-              ),
-              ShopScreen(userLookup: widget.providerLookup, isProvider: true),
+              _loadedNavTabs.contains(1)
+                  ? ChatScreen(
+                      userLookup: widget.providerLookup,
+                      onBackPressed: () => setState(() => _currentNavIndex = 0),
+                    )
+                  : const SizedBox.shrink(),
+              _loadedNavTabs.contains(2)
+                  ? ShopScreen(
+                      userLookup: widget.providerLookup,
+                      isProvider: true,
+                    )
+                  : const SizedBox.shrink(),
               const Center(child: Text('AI Assistant coming soon')),
             ],
           ),
@@ -388,6 +396,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               onTap: (index) {
                 setState(() {
                   _currentNavIndex = index;
+                  _loadedNavTabs.add(index);
                 });
                 if (index == 3) {
                   ScaffoldMessenger.of(context).showSnackBar(

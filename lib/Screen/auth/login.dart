@@ -127,6 +127,8 @@ class _LoginScreenState extends State<LoginScreen>
         }
         final profile = jsonDecode(profileResponse.body);
         role = profile['role']?.toString();
+        await preferences.setString('session_lookup', lookup);
+        await preferences.setString('session_role', role ?? 'User');
         if (!mounted) return;
 
         final isAdmin =
