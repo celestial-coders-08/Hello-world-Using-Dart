@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
 import 'profile_screen.dart';
 import 'add_pet_screen.dart';
@@ -49,6 +50,38 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchUserProfile();
     _fetchPets();
     _loadSavedPet();
+    _fetchCustomerNotificationsCount();
+  }
+
+  int _customerUnreadNotifications = 0;
+
+  Future<void> _fetchCustomerNotificationsCount() async {
+    final lookup = widget.userLookup?.trim();
+    if (lookup == null || lookup.isEmpty) return;
+    final count = await ApiService.fetchUnreadNotificationsCount(
+      recipientId: lookup,
+      role: 'customer',
+    );
+    if (mounted) {
+      setState(() => _customerUnreadNotifications = count);
+    }
+  }
+
+  void _openCustomerNotificationsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _CustomerNotificationsModal(
+        customerLookup: widget.userLookup,
+        onNotificationRead: () {
+          _fetchCustomerNotificationsCount();
+        },
+      ),
+    ).then((_) => _fetchCustomerNotificationsCount());
   }
 
   @override
@@ -164,6 +197,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 actions: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_outlined, size: 24),
+                        color: colors.onSurfaceVariant,
+                        onPressed: _openCustomerNotificationsSheet,
+                      ),
+                      if (_customerUnreadNotifications > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFC62828),
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                            child: Text(
+                              _customerUnreadNotifications > 9 ? '9+' : '$_customerUnreadNotifications',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   GestureDetector(
                     onTap: () {
                       if (widget.userLookup == null ||
@@ -982,4 +1047,257 @@ class MapStylingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant MapStylingPainter oldDelegate) =>
       oldDelegate.zoomValue != zoomValue || oldDelegate.useCenter != useCenter;
+}
+
+// ---------------------------------------------------------------------------
+// Customer Notifications Modal Bottom Sheet
+// ---------------------------------------------------------------------------
+class _CustomerNotificationsModal extends StatefulWidget {
+  final String? customerLookup;
+  final VoidCallback onNotificationRead;
+
+  const _CustomerNotificationsModal({
+    required this.customerLookup,
+    required this.onNotificationRead,
+  });
+
+  @override
+  State<_CustomerNotificationsModal> createState() => _CustomerNotificationsModalState();
+}
+
+class _CustomerNotificationsModalState extends State<_CustomerNotificationsModal> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _notifications = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    final lookup = widget.customerLookup?.trim();
+    if (lookup == null || lookup.isEmpty) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    final items = await ApiService.fetchNotifications(
+      recipientId: lookup,
+      role: 'customer',
+    );
+    if (!mounted) return;
+    setState(() {
+      _notifications = items;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _markAllRead() async {
+    final lookup = widget.customerLookup?.trim();
+    if (lookup == null) return;
+    await ApiService.markAllNotificationsRead(
+      recipientId: lookup,
+      role: 'customer',
+    );
+    widget.onNotificationRead();
+    _loadNotifications();
+  }
+
+  Future<void> _onItemTapped(Map<String, dynamic> item) async {
+    final nid = (item['id'] as num?)?.toInt();
+    if (nid != null && item['is_read'] != true) {
+      await ApiService.markNotificationRead(nid);
+      widget.onNotificationRead();
+      _loadNotifications();
+    }
+  }
+
+  String _formatTime(String? dtStr) {
+    if (dtStr == null) return '';
+    try {
+      final dt = DateTime.parse(dtStr);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[dt.month - 1];
+      final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$month ${dt.day} • $hour12:$minute $ampm';
+    } catch (_) {
+      return dtStr;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Booking Updates & Alerts',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: PawStayTheme.onSurface,
+                ),
+              ),
+              if (_notifications.any((n) => n['is_read'] != true))
+                TextButton(
+                  onPressed: _markAllRead,
+                  child: Text(
+                    'Mark all as read',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: PawStayTheme.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: PawStayTheme.primary),
+                  )
+                : _notifications.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.notifications_none_rounded,
+                              size: 48,
+                              color: Colors.grey.shade400,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No notifications yet',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                color: PawStayTheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'When sitters confirm or update your bookings, you\'ll see alerts here.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _notifications.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = _notifications[index];
+                          final isUnread = item['is_read'] != true;
+                          final title = item['title']?.toString() ?? 'Booking Update';
+                          final message = item['message']?.toString() ?? '';
+                          final time = _formatTime(item['created_at']?.toString());
+                          final type = item['type']?.toString().toLowerCase() ?? '';
+
+                          Color iconColor = PawStayTheme.primary;
+                          IconData iconData = Icons.notifications_rounded;
+                          if (type.contains('accepted')) {
+                            iconColor = const Color(0xFF2E7D32);
+                            iconData = Icons.check_circle_rounded;
+                          } else if (type.contains('declined')) {
+                            iconColor = const Color(0xFFC62828);
+                            iconData = Icons.cancel_rounded;
+                          }
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: iconColor.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(iconData, size: 20, color: iconColor),
+                            ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 14,
+                                      fontWeight: isUnread
+                                          ? FontWeight.bold
+                                          : FontWeight.w600,
+                                      color: PawStayTheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                if (isUnread)
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: PawStayTheme.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 2),
+                                Text(
+                                  message,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    color: PawStayTheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                if (time.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    time,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            onTap: () => _onItemTapped(item),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
 }

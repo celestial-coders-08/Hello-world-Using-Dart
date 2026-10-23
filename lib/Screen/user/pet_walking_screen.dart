@@ -1,61 +1,59 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 
-import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
 import '../../widgets/animated_ai_nav_icon.dart';
 import 'profile_screen.dart';
 import 'sitter_profile_screen.dart';
 
+String _fmtPrice(dynamic v) {
+  if (v == null) return '0';
+  final n = v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
+  return n == n.truncateToDouble() ? n.toInt().toString() : n.toStringAsFixed(2);
+}
+
 class PetWalkingScreen extends StatefulWidget {
   final String? userLookup;
+  final String initialCategory; // 'Pet Sitter' or 'Packages' or 'sitter' or 'packages'
 
-  const PetWalkingScreen({super.key, this.userLookup});
+  const PetWalkingScreen({
+    super.key,
+    this.userLookup,
+    this.initialCategory = 'Pet Sitter',
+  });
 
   @override
   State<PetWalkingScreen> createState() => _PetWalkingScreenState();
 }
 
 class _PetWalkingScreenState extends State<PetWalkingScreen> {
+  late String _selectedCategory; // 'sitter' or 'packages'
   bool _isLoading = true;
   String? _errorMessage;
-  String? _userProfileImageBase64;
+  String _searchQuery = '';
+  final TextEditingController _searchCtrl = TextEditingController();
 
-  List<PetWalker> _walkers = [];
+  List<Map<String, dynamic>> _providers = [];
+
+  bool get _isPackages => _selectedCategory == 'packages';
 
   @override
   void initState() {
     super.initState();
-    _fetchUserProfile();
-    _fetchPetWalkers();
+    final lower = widget.initialCategory.toLowerCase();
+    _selectedCategory = lower.contains('pack') ? 'packages' : 'sitter';
+    _fetchProviders();
   }
 
-  Future<void> _fetchUserProfile() async {
-    if (widget.userLookup == null || widget.userLookup!.trim().isEmpty) return;
-    try {
-      final url =
-          '${ApiConfig.baseUrl}/profile?lookup=${Uri.encodeQueryComponent(widget.userLookup!.trim())}';
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 6));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) {
-          final imgStr = data['profile_image']?.toString();
-          if (imgStr != null && imgStr.isNotEmpty) {
-            setState(() {
-              _userProfileImageBase64 = imgStr;
-            });
-          }
-        }
-      }
-    } catch (_) {}
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
-  Future<void> _fetchPetWalkers() async {
+  Future<void> _fetchProviders() async {
     if (!mounted) return;
 
     setState(() {
@@ -64,229 +62,65 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     });
 
     try {
-      final uri = Uri.parse(
-        Uri.parse('${ApiConfig.baseUrl}/service-providers/pet-walking')
-            .replace(
-              queryParameters: {
-                if (widget.userLookup != null &&
-                    widget.userLookup!.trim().isNotEmpty)
-                  'user_id': widget.userLookup!.trim(),
-              },
-            )
-            .toString(),
+      final data = await ApiService.fetchCustomerProviders(
+        category: _selectedCategory,
       );
 
-      final response = await http
-          .get(uri, headers: {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 10));
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final dynamic decoded = jsonDecode(response.body);
-
-        if (decoded is! List) {
-          throw Exception('Invalid response received from server.');
-        }
-
-        final List<PetWalker> walkers = [];
-
-        for (final item in decoded) {
-          if (item is Map<String, dynamic>) {
-            walkers.add(PetWalker.fromJson(item));
-          } else if (item is Map) {
-            walkers.add(PetWalker.fromJson(Map<String, dynamic>.from(item)));
-          }
-        }
-
-        setState(() {
-          _walkers = walkers;
-          _isLoading = false;
-        });
-      } else {
-        String message = 'Failed to load available walkers.';
-
-        try {
-          final body = jsonDecode(response.body);
-          if (body is Map && body['detail'] != null) {
-            message = body['detail'].toString();
-          }
-        } catch (_) {}
-
-        setState(() {
-          _errorMessage = message;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
       if (!mounted) return;
 
       setState(() {
+        _providers = data;
         _isLoading = false;
-        _errorMessage =
-            'Unable to connect to PawStay server. Please check your connection.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Unable to connect to PawStay. Please check your connection.';
       });
     }
   }
 
-  Future<void> _openProvider(PetWalker walker) async {
+  void _switchCategory(String category) {
+    if (_selectedCategory == category) return;
+    setState(() {
+      _selectedCategory = category;
+    });
+    _fetchProviders();
+  }
+
+  void _openProvider(Map<String, dynamic> provider) {
+    final lookup = (provider['username'] ?? provider['id'] ?? '').toString();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            SitterProfileScreen(walker: walker, userLookup: widget.userLookup),
+        builder: (_) => SitterProfileScreen(
+          providerLookup: lookup,
+          userLookup: widget.userLookup,
+          initialCategory: _selectedCategory,
+          initialProviderData: provider,
+        ),
       ),
     );
   }
 
-  Future<void> _showReviewDialog(PetWalker walker) async {
-    final descriptionController = TextEditingController();
-    final categoryRatings = <String, int>{
-      'Punctuality': 5,
-      'Communication': 5,
-      'Pet Friendliness': 5,
-      'Reliability': 5,
-    };
-    var isSubmitting = false;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Review ${walker.fullName}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...categoryRatings.keys.map(
-                (category) => Row(
-                  children: [
-                    Expanded(child: Text(category)),
-                    ...List.generate(
-                      5,
-                      (index) => IconButton(
-                        tooltip: '${index + 1} star${index == 0 ? '' : 's'}',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 30,
-                          minHeight: 36,
-                        ),
-                        onPressed: isSubmitting
-                            ? null
-                            : () => setDialogState(
-                                () => categoryRatings[category] = index + 1,
-                              ),
-                        icon: Icon(
-                          index < categoryRatings[category]!
-                              ? Icons.star_rounded
-                              : Icons.star_border_rounded,
-                          color: const Color(0xFFD97706),
-                          size: 25,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Overall: ${(categoryRatings.values.reduce((a, b) => a + b) / categoryRatings.length).toStringAsFixed(1)} / 5.0',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: descriptionController,
-                enabled: !isSubmitting,
-                maxLines: 4,
-                maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: 'Your review',
-                  hintText: 'Tell us about your experience',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final description = descriptionController.text.trim();
-                      if (description.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please enter a review.'),
-                          ),
-                        );
-                        return;
-                      }
-                      if (widget.userLookup == null ||
-                          widget.userLookup!.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please log in to submit a review.'),
-                          ),
-                        );
-                        return;
-                      }
-                      setDialogState(() => isSubmitting = true);
-                      final rating =
-                          (categoryRatings.values.reduce((a, b) => a + b) /
-                                  categoryRatings.length)
-                              .round();
-                      final result = await ApiService.submitReview({
-                        'provider_lookup': walker.username,
-                        'user_lookup': widget.userLookup!.trim(),
-                        'rating': rating,
-                        'description': description,
-                      });
-                      if (!context.mounted) return;
-                      if (result != null) {
-                        Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Review submitted successfully.'),
-                          ),
-                        );
-                      } else {
-                        setDialogState(() => isSubmitting = false);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Unable to submit review. Please try again.',
-                            ),
-                          ),
-                        );
-                      }
-                    },
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Submit Review'),
-            ),
-          ],
-        ),
-      ),
-    );
-    descriptionController.dispose();
+  List<Map<String, dynamic>> get _filteredProviders {
+    if (_searchQuery.trim().isEmpty) return _providers;
+    final query = _searchQuery.trim().toLowerCase();
+    return _providers.where((p) {
+      final name = (p['name'] ?? '').toString().toLowerCase();
+      final city = (p['city'] ?? '').toString().toLowerCase();
+      final bio = (p['bio'] ?? '').toString().toLowerCase();
+      return name.contains(query) || city.contains(query) || bio.contains(query);
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    const bg = Color(0xFFFFF9F6);
+
     return Scaffold(
-      backgroundColor: const Color(
-        0xFFFFF9F6,
-      ), // Warm off-white background matching UI design
+      backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: PawStayTheme.surface,
         elevation: 0,
@@ -294,7 +128,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         leading: IconButton(
           icon: Icon(
             Icons.arrow_back_rounded,
-            color: PawStayTheme.onSurfaceVariant,
+            color: PawStayTheme.onSurface,
           ),
           onPressed: () => Navigator.pop(context),
         ),
@@ -315,48 +149,126 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
           ],
         ),
         actions: [
-          GestureDetector(
-            onTap: () {
-              if (widget.userLookup != null &&
-                  widget.userLookup!.trim().isNotEmpty) {
+          if (widget.userLookup != null && widget.userLookup!.trim().isNotEmpty)
+            GestureDetector(
+              onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
                         ProfileScreen(userLookup: widget.userLookup!),
                   ),
-                ).then((_) => _fetchUserProfile());
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: _userProfileImageBase64 != null
-                  ? CircleAvatar(
-                      radius: 20,
-                      backgroundImage: MemoryImage(
-                        base64Decode(_userProfileImageBase64!),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Icon(
+                  Icons.account_circle_outlined,
+                  color: PawStayTheme.onSurfaceVariant,
+                  size: 28,
+                ),
+              ),
+            ),
+        ],
+      ),
+
+      body: Column(
+        children: [
+          // Top Category Selector & Search
+          Container(
+            color: PawStayTheme.surface,
+            padding: const EdgeInsets.fromLTRB(18, 4, 18, 14),
+            child: Column(
+              children: [
+                // Category Pills (Pet Sitter & Packages)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildCategoryPill(
+                        title: 'Pet Sitter',
+                        icon: Icons.pets_rounded,
+                        isSelected: !_isPackages,
+                        onTap: () => _switchCategory('sitter'),
                       ),
-                    )
-                  : Icon(
-                      Icons.account_circle_outlined,
-                      color: PawStayTheme.onSurfaceVariant,
-                      size: 28,
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildCategoryPill(
+                        title: 'Packages',
+                        icon: Icons.inventory_2_rounded,
+                        isSelected: _isPackages,
+                        onTap: () => _switchCategory('packages'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Search Bar
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7EFE9),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded,
+                          size: 20, color: PawStayTheme.onSurfaceVariant),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchCtrl,
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                          decoration: InputDecoration(
+                            hintText: _isPackages
+                                ? 'Search packages, sitters, or city...'
+                                : 'Search sitters or city...',
+                            hintStyle: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              color: PawStayTheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            color: PawStayTheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      if (_searchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchCtrl.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          child: Icon(Icons.clear_rounded,
+                              size: 18, color: PawStayTheme.onSurfaceVariant),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Main List View
+          Expanded(
+            child: RefreshIndicator(
+              color: PawStayTheme.primary,
+              onRefresh: _fetchProviders,
+              child: _buildBody(),
             ),
           ),
         ],
       ),
 
-      body: RefreshIndicator(
-        color: PawStayTheme.primary,
-        onRefresh: _fetchPetWalkers,
-        child: _buildBody(),
-      ),
-
-      // Standard Bottom Navigation Bar matching HomeScreen
+      // Bottom Navigation matching User screens
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: colors.surfaceContainer,
+          color: Colors.white,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -368,9 +280,9 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         child: BottomNavigationBar(
           currentIndex: 0,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: colors.surfaceContainer,
+          backgroundColor: Colors.white,
           selectedItemColor: PawStayTheme.primary,
-          unselectedItemColor: colors.onSurfaceVariant,
+          unselectedItemColor: PawStayTheme.onSurfaceVariant,
           selectedLabelStyle: GoogleFonts.plusJakartaSans(
             fontWeight: FontWeight.bold,
             fontSize: 11,
@@ -405,6 +317,53 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     );
   }
 
+  Widget _buildCategoryPill({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? PawStayTheme.primary : const Color(0xFFF7EFE9),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: PawStayTheme.primary.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : PawStayTheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: isSelected ? Colors.white : PawStayTheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
       return ListView(
@@ -423,10 +382,10 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     if (_errorMessage != null) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
-          Icon(Icons.cloud_off_rounded, size: 54, color: PawStayTheme.outline),
+          SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+          const Icon(Icons.cloud_off_rounded, size: 54, color: PawStayTheme.primary),
           const SizedBox(height: 16),
           Text(
             'Something went wrong',
@@ -449,7 +408,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
           const SizedBox(height: 20),
           Center(
             child: ElevatedButton.icon(
-              onPressed: _fetchPetWalkers,
+              onPressed: _fetchProviders,
               icon: const Icon(Icons.refresh_rounded),
               label: Text(
                 'Try Again',
@@ -459,12 +418,9 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
                 backgroundColor: PawStayTheme.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 13,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
             ),
@@ -473,141 +429,211 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
       );
     }
 
-    final displayWalkers = _walkers;
+    final list = _filteredProviders;
 
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      children: [
-        Text(
-          'Available Walkers',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: PawStayTheme.onSurface,
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        if (displayWalkers.isEmpty)
-          Text(
-            'No pet walkers are currently available.',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 14,
-              color: PawStayTheme.onSurfaceVariant,
+    if (list.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFCEEE8),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.pets_rounded,
+              size: 48,
+              color: PawStayTheme.primary,
             ),
           ),
-
-        ...displayWalkers.map(
-          (walker) => Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _buildWalkerCard(walker),
+          const SizedBox(height: 16),
+          Text(
+            _isPackages
+                ? 'No Package Providers Available'
+                : 'No Pet Sitters Available',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: PawStayTheme.onSurface,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 8),
+          Text(
+            _searchQuery.isNotEmpty
+                ? 'No providers matched "$_searchQuery". Try searching a different city or name.'
+                : 'Check back soon as verified care providers activate their schedules.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              color: PawStayTheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      itemCount: list.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              _isPackages ? 'Care Packages' : 'Available Pet Sitters',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: PawStayTheme.onSurface,
+              ),
+            ),
+          );
+        }
+
+        final provider = list[index - 1];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildProviderCard(provider),
+        );
+      },
     );
   }
 
-  Widget _buildWalkerCard(PetWalker walker) {
+  // ---------------------------------------------------------------------------
+  // Card: avatar/initial, name, city, rating (or "New"), price display
+  // ---------------------------------------------------------------------------
+  Widget _buildProviderCard(Map<String, dynamic> provider) {
+    final name = (provider['name'] ?? 'Pet Care Provider').toString();
+    final city = (provider['city'] ?? '').toString().trim();
+
+    final dynamic ratingRaw = provider['rating'];
+    final double? rating = ratingRaw is num ? ratingRaw.toDouble() : double.tryParse('$ratingRaw');
+
+    final dynamic reviewCountRaw = provider['review_count'];
+    final int reviewCount = reviewCountRaw is int ? reviewCountRaw : int.tryParse('$reviewCountRaw') ?? 0;
+
+    // Price display logic
+    String priceText;
+    if (_isPackages) {
+      final minPrice = provider['min_package_price'];
+      priceText = 'From ₹${_fmtPrice(minPrice)}';
+    } else {
+      final sitterPrice = provider['sitter_price'];
+      priceText = '₹${_fmtPrice(sitterPrice)} / session';
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF2E8E2), width: 1.0),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.025),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => _openProvider(walker),
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openProvider(provider),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Column(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    _buildProfileImage(walker),
+                // Avatar / Initial
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFFCEEE8),
+                  ),
+                  child: ClipOval(child: _buildAvatar(provider, name, 56)),
+                ),
+                const SizedBox(width: 14),
 
-                    const SizedBox(width: 14),
-
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                // Name, City, Price
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Text(
-                            walker.fullName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: PawStayTheme.onSurface,
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: PawStayTheme.onSurface,
+                              ),
                             ),
                           ),
-
-                          const SizedBox(height: 3),
-
-                          Text(
-                            walker.email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: PawStayTheme.onSurfaceVariant,
-                            ),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          Text(
-                            walker.walkingCharge != null
-                                ? 'Pet Walking: ₹${walker.walkingCharge} / session'
-                                : 'Pet walking price not provided',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: PawStayTheme.primary,
-                            ),
-                          ),
+                          const SizedBox(width: 8),
+                          // Rating or New badge
+                          _buildRatingBadge(rating, reviewCount),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 3),
 
-                    const SizedBox(width: 10),
+                      if (city.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_rounded,
+                              size: 13,
+                              color: PawStayTheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              city,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: PawStayTheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                      ],
 
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFFFAF0EB),
+                      Text(
+                        priceText,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: PawStayTheme.primary,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 22,
-                        color: PawStayTheme.primary,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showReviewDialog(walker),
-                    icon: const Icon(Icons.rate_review_outlined, size: 18),
-                    label: const Text('Get Review'),
+
+                const SizedBox(width: 8),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFFAF0EB),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: PawStayTheme.primary,
                   ),
                 ),
               ],
@@ -618,31 +644,89 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     );
   }
 
-  Widget _buildProfileImage(PetWalker walker) {
-    if (walker.profileImage != null && walker.profileImage!.trim().isNotEmpty) {
-      try {
-        final bytes = base64Decode(
-          walker.profileImage!.contains(',')
-              ? walker.profileImage!.split(',').last
-              : walker.profileImage!,
-        );
+  Widget _buildRatingBadge(double? rating, int reviewCount) {
+    if (rating != null && rating > 0 && reviewCount > 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBEB),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.star_rounded, size: 13, color: Color(0xFFD97706)),
+            const SizedBox(width: 2),
+            Text(
+              rating.toStringAsFixed(1),
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFFB45309),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
-        return CircleAvatar(
-          radius: 26,
-          backgroundColor: const Color(0xFFFAF0EB),
-          backgroundImage: MemoryImage(bytes),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: PawStayTheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        'New',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: PawStayTheme.secondary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar(Map<String, dynamic> provider, String name, double size) {
+    final img = provider['profile_image']?.toString();
+    if (img != null && img.trim().isNotEmpty) {
+      try {
+        final raw = img.trim();
+        final bytes = base64Decode(raw.contains(',') ? raw.split(',').last : raw);
+        return Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _initialsAvatar(name, size),
         );
       } catch (_) {}
     }
+    return _initialsAvatar(name, size);
+  }
 
-    return CircleAvatar(
-      radius: 26,
-      backgroundColor: const Color(0xFFFAF0EB),
-      child: const Icon(Icons.person, color: PawStayTheme.primary, size: 26),
+  Widget _initialsAvatar(String name, double size) {
+    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
+    return Container(
+      width: size,
+      height: size,
+      color: const Color(0xFFFCEEE8),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: size * 0.4,
+          fontWeight: FontWeight.bold,
+          color: PawStayTheme.primary,
+        ),
+      ),
     );
   }
 }
 
+// ---------------------------------------------------------------------------
+// Backward-compatible PetWalker model for any references
+// ---------------------------------------------------------------------------
 class PetWalker {
   final int id;
   final String fullName;
@@ -686,22 +770,20 @@ class PetWalker {
 
     return PetWalker(
       id: _toInt(json['id']),
-      fullName: (json['full_name'] ?? 'Pet Walker').toString(),
+      fullName: (json['full_name'] ?? json['name'] ?? 'Pet Sitter').toString(),
       email: mail,
       username: uname,
       role: (json['role'] ?? 'Service provider').toString(),
       city: (json['city'] ?? '').toString(),
       isVerified: json['is_verified'] == true,
       profileImage: json['profile_image']?.toString(),
-      distance: _formatDistance(json['distance']),
-      serviceLabel: _formatServiceLabel(
-        json['service'] ?? json['service_type'] ?? json['service_name'],
-      ),
-      walkingCharge: _toNullableInt(json['walking_charge']),
+      distance: (json['distance'] ?? '2 miles away').toString(),
+      serviceLabel: (json['service'] ?? 'Pet Care').toString(),
+      walkingCharge: _toNullableInt(json['sitter_price'] ?? json['walking_charge']),
       daycareCharge: _toNullableInt(json['daycare_charge']),
       daycareFoodCharge: _toNullableInt(json['daycare_food_charge']),
-      providerDescription: json['provider_description']?.toString(),
-      averageRating: (json['average_rating'] as num?)?.toDouble() ?? 0,
+      providerDescription: (json['bio'] ?? json['provider_description'])?.toString(),
+      averageRating: (json['rating'] ?? json['average_rating'] as num?)?.toDouble() ?? 0,
       reviewCount: _toInt(json['review_count']),
     );
   }
@@ -717,24 +799,5 @@ class PetWalker {
     if (value is int) return value;
     if (value is double) return value.toInt();
     return int.tryParse(value.toString());
-  }
-
-  static String _formatDistance(dynamic value) {
-    if (value == null || value.toString().trim().isEmpty) {
-      return '2 miles away';
-    }
-    final text = value.toString().trim();
-    if (text.toLowerCase().contains('mile') ||
-        text.toLowerCase().contains('km')) {
-      return text;
-    }
-    return '$text miles away';
-  }
-
-  static String _formatServiceLabel(dynamic value) {
-    if (value == null || value.toString().trim().isEmpty) {
-      return 'Active Walk';
-    }
-    return value.toString().trim();
   }
 }

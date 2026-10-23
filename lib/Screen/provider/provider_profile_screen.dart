@@ -7,6 +7,22 @@ import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
 import '../auth/login.dart';
 
+const _kPetTypes = ['Dog', 'Cat', 'Bird', 'Fish', 'Rabbit', 'Hamster', 'Turtle'];
+const _kSuggestions = [
+  'Walk', 'Playtime', 'Treats', 'Photo updates', 'Fresh water',
+  'Grooming', 'Training', 'Medication', 'All meals', 'Snacks',
+];
+
+String _fmtNum(dynamic v) {
+  if (v == null) return '';
+  if (v is int) return v == 0 ? '' : v.toString();
+  if (v is double) {
+    if (v == 0.0) return '';
+    return v == v.truncateToDouble() ? v.toInt().toString() : v.toString();
+  }
+  return v.toString();
+}
+
 class ProviderProfileScreen extends StatefulWidget {
   final String? providerLookup;
 
@@ -21,100 +37,150 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   bool _isSaving = false;
   bool _isUploadingPhoto = false;
   final ImagePicker _imagePicker = ImagePicker();
-
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _walkingChargeController =
-      TextEditingController();
-  final TextEditingController _daycareChargeController =
-      TextEditingController();
-  final TextEditingController _daycareFoodChargeController =
-      TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
 
+  // Identity (read-only from backend)
   String _displayName = 'Service Provider';
-  String _location = 'PawStay Verified';
-  final String _rating = '4.9 (184 reviews)';
+  String _locationLabel = 'PawStay Verified';
   String? _profileImageBase64;
-  int _charCount = 0;
+  double? _rating;
+  int _reviewCount = 0;
+
+  // Profile fields
+  final _bioCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
+  final _experienceCtrl = TextEditingController(text: '0');
+  List<String> _petTypes = [];
+  int _bioCharCount = 0;
+
+  // Sitter service
+  bool _sitterEnabled = false;
+  final _sitterPriceCtrl = TextEditingController();
+  final _sitterDurationCtrl = TextEditingController(text: '60');
+
+  // Packages
+  late final List<_PackageFormData> _packages;
+
+  TextStyle get _labelStyle => GoogleFonts.plusJakartaSans(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: PawStayTheme.onSurface,
+      );
 
   @override
   void initState() {
     super.initState();
-    _charCount = _descriptionController.text.length;
-    _descriptionController.addListener(() {
-      if (mounted) {
-        setState(() {
-          _charCount = _descriptionController.text.length;
-        });
-      }
+    _packages = [
+      _PackageFormData(tier: 'bronze', label: 'Bronze'),
+      _PackageFormData(tier: 'silver', label: 'Silver'),
+      _PackageFormData(tier: 'gold', label: 'Gold'),
+    ];
+    _bioCtrl.addListener(() {
+      if (mounted) setState(() => _bioCharCount = _bioCtrl.text.length);
     });
     _loadProfileData();
   }
 
   @override
   void dispose() {
-    _walkingChargeController.dispose();
-    _daycareChargeController.dispose();
-    _daycareFoodChargeController.dispose();
-    _descriptionController.dispose();
+    _bioCtrl.dispose();
+    _cityCtrl.dispose();
+    _experienceCtrl.dispose();
+    _sitterPriceCtrl.dispose();
+    _sitterDurationCtrl.dispose();
+    for (final p in _packages) {
+      p.dispose();
+    }
     super.dispose();
   }
 
+  // ---------------------------------------------------------------------------
+  // Data Loading
+  // ---------------------------------------------------------------------------
   Future<void> _loadProfileData() async {
-    final lookup = widget.providerLookup;
-    if (lookup == null || lookup.trim().isEmpty) {
+    final lookup = widget.providerLookup?.trim();
+    if (lookup == null || lookup.isEmpty) {
       setState(() => _isLoading = false);
       return;
     }
-
     setState(() => _isLoading = true);
 
     try {
       final profile = await ApiService.fetchProviderProfile(
-        providerLookup: lookup.trim(),
+        providerLookup: lookup,
       );
       if (profile != null && mounted) {
         setState(() {
-          if (profile['full_name'] != null &&
-              profile['full_name'].toString().trim().isNotEmpty) {
-            _displayName = profile['full_name'].toString().trim();
-          } else if (profile['username'] != null &&
-              profile['username'].toString().trim().isNotEmpty) {
-            _displayName = profile['username'].toString().trim();
+          // Identity
+          final fullName = profile['full_name']?.toString().trim();
+          final username = profile['username']?.toString().trim();
+          if (fullName != null && fullName.isNotEmpty) {
+            _displayName = fullName;
+          } else if (username != null && username.isNotEmpty) {
+            _displayName = username;
           }
 
-          if (profile['city'] != null &&
-              profile['city'].toString().trim().isNotEmpty) {
-            _location = profile['city'].toString().trim();
-          } else if (profile['location'] != null &&
-              profile['location'].toString().trim().isNotEmpty) {
-            _location = profile['location'].toString().trim();
-          }
-
-          if (profile['profile_image'] != null &&
-              profile['profile_image'].toString().isNotEmpty) {
+          if (profile['profile_image']?.toString().isNotEmpty == true) {
             _profileImageBase64 = profile['profile_image'].toString();
           }
 
-          if (profile['walking_charge'] != null) {
-            _walkingChargeController.text = profile['walking_charge']
-                .toString();
+          _rating = (profile['average_rating'] as num?)?.toDouble();
+          _reviewCount = (profile['review_count'] as num?)?.toInt() ?? 0;
+
+          // Profile nested
+          final p = profile['profile'];
+          if (p is Map<String, dynamic>) {
+            _bioCtrl.text = p['bio']?.toString() ?? '';
+            _cityCtrl.text = p['city']?.toString() ?? '';
+            _experienceCtrl.text = (p['experience_years'] ?? 0).toString();
+            if (p['pet_types'] is List) {
+              _petTypes = List<String>.from(p['pet_types']);
+            }
           }
-          if (profile['daycare_charge'] != null) {
-            _daycareChargeController.text = profile['daycare_charge']
-                .toString();
+
+          // Backward compat
+          if (_bioCtrl.text.isEmpty) {
+            _bioCtrl.text =
+                profile['provider_description']?.toString().trim() ?? '';
           }
-          if (profile['daycare_food_charge'] != null) {
-            _daycareFoodChargeController.text = profile['daycare_food_charge']
-                .toString();
+          if (_cityCtrl.text.isEmpty) {
+            _cityCtrl.text = profile['city']?.toString().trim() ?? '';
           }
-          if (profile['provider_description'] != null &&
-              profile['provider_description'].toString().trim().isNotEmpty) {
-            _descriptionController.text = profile['provider_description']
-                .toString()
-                .trim();
-            _charCount = _descriptionController.text.length;
+          _locationLabel = _cityCtrl.text.isNotEmpty
+              ? _cityCtrl.text
+              : (profile['location']?.toString().trim() ?? 'PawStay Verified');
+
+          // Sitter
+          final s = profile['sitter_service'];
+          if (s is Map<String, dynamic>) {
+            _sitterEnabled = s['sitter_enabled'] == true;
+            _sitterPriceCtrl.text = _fmtNum(s['sitter_price']);
+            _sitterDurationCtrl.text =
+                (s['sitter_duration_mins'] ?? 60).toString();
           }
+
+          // Backward compat: old walking_charge
+          if (!_sitterEnabled && _sitterPriceCtrl.text.isEmpty) {
+            final wc = profile['walking_charge'];
+            if (wc != null && wc != 0) {
+              _sitterEnabled = true;
+              _sitterPriceCtrl.text = _fmtNum(wc);
+            }
+          }
+
+          // Packages
+          final pkgList = profile['packages'];
+          if (pkgList is List) {
+            for (final pkgData in pkgList) {
+              if (pkgData is Map<String, dynamic>) {
+                final tier = pkgData['tier']?.toString();
+                final match = _packages.where((p) => p.tier == tier);
+                if (match.isNotEmpty) match.first.loadFrom(pkgData);
+              }
+            }
+          }
+
+          _bioCharCount = _bioCtrl.text.length;
         });
       }
     } catch (e) {
@@ -122,6 +188,139 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
+  String? _validateServices() {
+    final anyEnabled = _sitterEnabled || _packages.any((p) => p.enabled);
+    if (!anyEnabled) return 'Enable at least one service';
+
+    if (_sitterEnabled) {
+      final price = double.tryParse(_sitterPriceCtrl.text.trim()) ?? 0;
+      if (price <= 0) return 'Sitter price must be greater than 0';
+    }
+    for (final pkg in _packages) {
+      if (pkg.enabled) {
+        final price = double.tryParse(pkg.priceCtrl.text.trim()) ?? 0;
+        if (price <= 0) return '${pkg.label} package price must be > 0';
+      }
+    }
+
+    final bronze = _packages[0];
+    final silver = _packages[1];
+    final gold = _packages[2];
+    if (silver.enabled && bronze.enabled) {
+      final sp = double.tryParse(silver.priceCtrl.text.trim()) ?? 0;
+      final bp = double.tryParse(bronze.priceCtrl.text.trim()) ?? 0;
+      if (sp < bp) return 'Silver price must be ≥ Bronze price';
+    }
+    if (gold.enabled && silver.enabled) {
+      final gp = double.tryParse(gold.priceCtrl.text.trim()) ?? 0;
+      final sp = double.tryParse(silver.priceCtrl.text.trim()) ?? 0;
+      if (gp < sp) return 'Gold price must be ≥ Silver price';
+    }
+    if (gold.enabled && bronze.enabled && !silver.enabled) {
+      final gp = double.tryParse(gold.priceCtrl.text.trim()) ?? 0;
+      final bp = double.tryParse(bronze.priceCtrl.text.trim()) ?? 0;
+      if (gp < bp) return 'Gold price must be ≥ Bronze price';
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Save
+  // ---------------------------------------------------------------------------
+  Future<void> _saveProfile() async {
+    // Expand enabled packages so form validators run
+    bool needsRebuild = false;
+    for (final p in _packages) {
+      if (p.enabled && !p.expanded) {
+        p.expanded = true;
+        needsRebuild = true;
+      }
+    }
+    if (needsRebuild) {
+      setState(() {});
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    if (!_formKey.currentState!.validate()) return;
+
+    final error = _validateServices();
+    if (error != null) {
+      _showSnack(error, isError: true);
+      return;
+    }
+
+    final lookup = widget.providerLookup?.trim();
+    if (lookup == null || lookup.isEmpty) {
+      _showSnack('Provider lookup identifier missing.', isError: true);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    final payload = {
+      'profile': {
+        'bio': _bioCtrl.text.trim(),
+        'city': _cityCtrl.text.trim(),
+        'experience_years': int.tryParse(_experienceCtrl.text.trim()) ?? 0,
+        'pet_types': _petTypes,
+      },
+      'sitter_service': {
+        'sitter_enabled': _sitterEnabled,
+        'sitter_price':
+            double.tryParse(_sitterPriceCtrl.text.trim()) ?? 0.0,
+        'sitter_duration_mins':
+            int.tryParse(_sitterDurationCtrl.text.trim()) ?? 60,
+      },
+      'packages': _packages.map((p) => p.toJson()).toList(),
+    };
+
+    final success = await ApiService.updateProviderServices(
+      providerLookup: lookup,
+      payload: payload,
+    );
+
+    if (mounted) {
+      setState(() => _isSaving = false);
+      if (success) {
+        _showSnack('Profile changes saved successfully!');
+        Navigator.pop(context, true);
+      } else {
+        _showSnack(
+          'Failed to save profile changes. Please try again.',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  void _resetToDefaults() {
+    setState(() {
+      _bioCtrl.clear();
+      _cityCtrl.clear();
+      _experienceCtrl.text = '0';
+      _petTypes.clear();
+      _sitterEnabled = false;
+      _sitterPriceCtrl.clear();
+      _sitterDurationCtrl.text = '60';
+      for (final p in _packages) {
+        p.enabled = false;
+        p.expanded = false;
+        p.priceCtrl.clear();
+        p.durationValueCtrl.text = '1';
+        p.durationUnit = 'hours';
+        p.mealsCtrl.text = '0';
+        p.walksCtrl.text = '0';
+        p.inclusions.clear();
+        p.descCtrl.clear();
+      }
+      _bioCharCount = 0;
+    });
+    _showSnack('Form cleared. Enter your custom pricing & bio.');
   }
 
   void _showSnack(String message, {bool isError = false}) {
@@ -188,69 +387,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     }
   }
 
-  Future<void> _saveProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final lookup = widget.providerLookup;
-    if (lookup == null || lookup.trim().isEmpty) {
-      _showSnack('Provider lookup identifier missing.', isError: true);
-      return;
-    }
-
-    final walking = int.tryParse(_walkingChargeController.text.trim()) ?? 0;
-    final daycare = int.tryParse(_daycareChargeController.text.trim()) ?? 0;
-    final daycareFood =
-        int.tryParse(_daycareFoodChargeController.text.trim()) ?? 0;
-    final desc = _descriptionController.text.trim();
-
-    if (walking <= 0 || daycare <= 0 || daycareFood <= 0) {
-      _showSnack('Please enter valid positive pricing amounts.', isError: true);
-      return;
-    }
-
-    if (desc.isEmpty) {
-      _showSnack(
-        'Please provide a short description of your experience.',
-        isError: true,
-      );
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
-    final success = await ApiService.updateProviderProfile(
-      providerLookup: lookup.trim(),
-      walkingCharge: walking,
-      daycareCharge: daycare,
-      daycareFoodCharge: daycareFood,
-      description: desc,
-    );
-
-    if (mounted) {
-      setState(() => _isSaving = false);
-      if (success) {
-        _showSnack('Profile changes saved successfully!');
-        Navigator.pop(context, true);
-      } else {
-        _showSnack(
-          'Failed to save profile changes. Please try again.',
-          isError: true,
-        );
-      }
-    }
-  }
-
-  void _resetToDefaults() {
-    setState(() {
-      _walkingChargeController.clear();
-      _daycareChargeController.clear();
-      _daycareFoodChargeController.clear();
-      _descriptionController.clear();
-      _charCount = 0;
-    });
-    _showSnack('Form cleared. Enter your custom pricing & bio.');
-  }
-
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -293,9 +432,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(
               radius: 18,
-              backgroundColor: PawStayTheme.primaryContainer.withValues(
-                alpha: 0.3,
-              ),
+              backgroundColor:
+                  PawStayTheme.primaryContainer.withValues(alpha: 0.3),
               child: const Icon(
                 Icons.person_outline_rounded,
                 color: PawStayTheme.primary,
@@ -318,27 +456,26 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    // 1. Header Profile Card
                     _buildProfileHeaderCard(),
-
                     const SizedBox(height: 20),
-
-                    // 2. Service Charges & Pricing Card
-                    _buildPricingCard(),
-
+                    _buildProfileDetailsCard(),
                     const SizedBox(height: 20),
-
-                    // 3. Service Provider Description Card
-                    _buildDescriptionCard(),
-
+                    _buildBioCard(),
                     const SizedBox(height: 20),
-
-                    // 4. Info Notice Banner
+                    _buildSitterServiceCard(),
+                    const SizedBox(height: 14),
+                    ...List.generate(
+                      _packages.length,
+                      (i) => Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: _buildPackageCard(_packages[i]),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     _buildNoticeBanner(),
-
                     const SizedBox(height: 24),
 
-                    // 5. Save Changes Button
+                    // Save button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -379,8 +516,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     ),
 
                     const SizedBox(height: 12),
-
-                    // 6. Reset to Defaults Text Button
                     TextButton(
                       onPressed: _resetToDefaults,
                       child: Text(
@@ -394,7 +529,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     ),
 
                     const SizedBox(height: 12),
-
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
@@ -421,7 +555,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -430,6 +563,9 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Profile Header Card
+  // ---------------------------------------------------------------------------
   Widget _buildProfileHeaderCard() {
     return Container(
       width: double.infinity,
@@ -442,7 +578,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          // Avatar with camera icon overlay (No external placeholder photos used)
+          // Avatar
           GestureDetector(
             onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
             child: Stack(
@@ -455,37 +591,14 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                     color: PawStayTheme.primaryContainer,
                   ),
                   child: ClipOval(
-                    child:
-                        _profileImageBase64 != null &&
+                    child: _profileImageBase64 != null &&
                             _profileImageBase64!.isNotEmpty
                         ? Image.memory(
                             base64Decode(_profileImageBase64!),
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stack) => Center(
-                              child: Text(
-                                _displayName.isNotEmpty
-                                    ? _displayName[0].toUpperCase()
-                                    : 'P',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: PawStayTheme.primary,
-                                ),
-                              ),
-                            ),
+                            errorBuilder: (_, _, _) => _avatarFallback(),
                           )
-                        : Center(
-                            child: Text(
-                              _displayName.isNotEmpty
-                                  ? _displayName[0].toUpperCase()
-                                  : 'P',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: PawStayTheme.primary,
-                              ),
-                            ),
-                          ),
+                        : _avatarFallback(),
                   ),
                 ),
                 Positioned(
@@ -504,9 +617,8 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                             height: 14,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Icon(
@@ -521,8 +633,6 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           ),
 
           const SizedBox(height: 12),
-
-          // Verified Provider Name
           Text(
             _displayName,
             style: GoogleFonts.plusJakartaSans(
@@ -533,28 +643,23 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
           ),
 
           const SizedBox(height: 10),
-
-          // Badges Row
+          // Badges
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Verified Care Provider tag
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: PawStayTheme.secondaryContainer.withValues(alpha: 0.5),
+                  color:
+                      PawStayTheme.secondaryContainer.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.shield_outlined,
-                      size: 14,
-                      color: PawStayTheme.secondary,
-                    ),
+                    const Icon(Icons.shield_outlined,
+                        size: 14, color: PawStayTheme.secondary),
                     const SizedBox(width: 4),
                     Text(
                       'Verified Care Provider',
@@ -568,233 +673,202 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              _buildRatingBadge(),
+            ],
+          ),
 
-              // Rating Tag
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF4E5),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      size: 14,
-                      color: Color(0xFFD97706),
+          // Top Rated banner (only with real reviews)
+          if (_rating != null && _rating! > 0 && _reviewCount > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: PawStayTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.pets_rounded,
+                          size: 18, color: PawStayTheme.primary),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Top Rated Sitter',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: PawStayTheme.onSurface,
+                            ),
+                          ),
+                          Text(
+                            '$_reviewCount reviews',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              color: PawStayTheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: PawStayTheme.surfaceDim),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _rating,
+                    child: Text(
+                      _cityCtrl.text.isNotEmpty
+                          ? _cityCtrl.text
+                          : _locationLabel,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF92400E),
+                        fontWeight: FontWeight.w600,
+                        color: PawStayTheme.onSurfaceVariant,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Top Rated Sitter banner container
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: PawStayTheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.pets_rounded,
-                      size: 18,
-                      color: PawStayTheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Top Rated Sitter',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: PawStayTheme.onSurface,
-                          ),
-                        ),
-                        Text(
-                          '99% response rate',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11,
-                            color: PawStayTheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: PawStayTheme.surfaceDim),
-                  ),
-                  child: Text(
-                    _location,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: PawStayTheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildPricingCard() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(PawStayTheme.radiusLg),
-        border: Border.all(color: PawStayTheme.surfaceDim),
-        boxShadow: PawStayTheme.ambientShadow1,
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Section Title
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: PawStayTheme.primaryContainer.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.payments_outlined,
-                  size: 20,
-                  color: PawStayTheme.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Service Charges & Pricing',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: PawStayTheme.onSurface,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            'Set your service rates in Indian Rupees (₹). Clients will see these rates when booking your services.',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 13,
-              color: PawStayTheme.onSurfaceVariant,
-              height: 1.4,
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // 1. Pet Walking Charges
-          _buildChargeInputField(
-            title: 'Pet Walking Charges',
-            badgeLabel: 'Per Session',
-            unitLabel: '/ 45 mins',
-            controller: _walkingChargeController,
-            note: 'Standard rate per dog walking session',
-          ),
-
-          const SizedBox(height: 16),
-
-          // 2. Day Care Charges
-          _buildChargeInputField(
-            title: 'Day Care Charges',
-            badgeLabel: 'Base Rate',
-            unitLabel: '/ day',
-            controller: _daycareChargeController,
-            note: 'Full day pet sitting & supervision at your location',
-          ),
-
-          const SizedBox(height: 16),
-
-          // 3. Day Care + Food Charges
-          _buildChargeInputField(
-            title: 'Day Care + Food Charges',
-            badgeLabel: 'All-Inclusive',
-            unitLabel: '/ day',
-            controller: _daycareFoodChargeController,
-            note: 'Day care combined with nutritious organic meals and snacks',
-          ),
-        ],
+  Widget _avatarFallback() {
+    return Center(
+      child: Text(
+        _displayName.isNotEmpty ? _displayName[0].toUpperCase() : 'P',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 32,
+          fontWeight: FontWeight.bold,
+          color: PawStayTheme.primary,
+        ),
       ),
     );
   }
 
-  Widget _buildChargeInputField({
-    required String title,
-    required String badgeLabel,
-    required String unitLabel,
-    required TextEditingController controller,
-    required String note,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildRatingBadge() {
+    if (_rating == null || _rating == 0 || _reviewCount == 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: PawStayTheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            Icon(Icons.fiber_new_rounded,
+                size: 14, color: PawStayTheme.onSurfaceVariant),
+            const SizedBox(width: 4),
             Text(
-              title,
+              'New',
               style: GoogleFonts.plusJakartaSans(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: PawStayTheme.onSurface,
-              ),
-            ),
-            Text(
-              badgeLabel,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
                 color: PawStayTheme.onSurfaceVariant,
               ),
             ),
           ],
         ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star_rounded, size: 14, color: Color(0xFFD97706)),
+          const SizedBox(width: 4),
+          Text(
+            '${_rating!.toStringAsFixed(1)} ($_reviewCount reviews)',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF92400E),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  // ---------------------------------------------------------------------------
+  // Profile Details Card (city, experience, pet types)
+  // ---------------------------------------------------------------------------
+  Widget _buildProfileDetailsCard() {
+    return _sectionCard(
+      icon: Icons.badge_outlined,
+      title: 'Profile Details',
+      children: [
+        _buildLabeledField('City', _cityCtrl,
+            type: TextInputType.text, hint: 'e.g., Mumbai'),
+        const SizedBox(height: 14),
+        _buildLabeledField('Years of Experience', _experienceCtrl, hint: '0'),
+        const SizedBox(height: 14),
+        Text('Pet Types', style: _labelStyle),
         const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _kPetTypes.map((type) {
+            final selected = _petTypes.contains(type);
+            return FilterChip(
+              label: Text(
+                type,
+                style: GoogleFonts.plusJakartaSans(fontSize: 12),
+              ),
+              selected: selected,
+              onSelected: (val) => setState(() {
+                if (val) {
+                  _petTypes.add(type);
+                } else {
+                  _petTypes.remove(type);
+                }
+              }),
+              selectedColor:
+                  PawStayTheme.primaryContainer.withValues(alpha: 0.4),
+              checkmarkColor: PawStayTheme.primary,
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
 
+  // ---------------------------------------------------------------------------
+  // Bio Card
+  // ---------------------------------------------------------------------------
+  Widget _buildBioCard() {
+    return _sectionCard(
+      icon: Icons.edit_note_rounded,
+      title: 'About You',
+      children: [
+        Text(
+          'About You & Your Experience',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: PawStayTheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
             color: PawStayTheme.surfaceContainerLow,
@@ -803,87 +877,480 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               color: PawStayTheme.outlineVariant.withValues(alpha: 0.5),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          child: Row(
+          padding: const EdgeInsets.all(12),
+          child: Column(
             children: [
-              Text(
-                '₹ ',
+              TextFormField(
+                controller: _bioCtrl,
+                maxLines: 4,
+                maxLength: 500,
+                buildCounter: (
+                  _, {
+                  required currentLength,
+                  required isFocused,
+                  maxLength,
+                }) =>
+                    null,
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: PawStayTheme.primary,
+                  fontSize: 14,
+                  color: PawStayTheme.onSurface,
+                  height: 1.4,
                 ),
+                decoration: const InputDecoration(
+                  hintText:
+                      'Tell pet parents about your experience, home setup and daily routine',
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                validator: (val) => (val == null || val.trim().isEmpty)
+                    ? 'Bio cannot be empty'
+                    : null,
               ),
-              Expanded(
-                child: TextFormField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: PawStayTheme.onSurface,
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_awesome_rounded,
+                          size: 14, color: PawStayTheme.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Warm & Friendly tone',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: PawStayTheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                  Text(
+                    '$_bioCharCount / 500 characters',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: PawStayTheme.onSurfaceVariant,
+                    ),
                   ),
-                  validator: (val) {
-                    if (val == null || val.trim().isEmpty) return 'Enter rate';
-                    if (int.tryParse(val.trim()) == null) return 'Invalid rate';
-                    return null;
-                  },
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: PawStayTheme.surfaceDim.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  unitLabel,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: PawStayTheme.onSurfaceVariant,
-                  ),
-                ),
+                ],
               ),
             ],
           ),
-        ),
-
-        const SizedBox(height: 6),
-
-        Row(
-          children: [
-            const Icon(
-              Icons.check_circle_outline_rounded,
-              size: 14,
-              color: PawStayTheme.secondary,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                note,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 11,
-                  color: PawStayTheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );
   }
 
-  Widget _buildDescriptionCard() {
+  // ---------------------------------------------------------------------------
+  // Pet Sitter Service Card
+  // ---------------------------------------------------------------------------
+  Widget _buildSitterServiceCard() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(PawStayTheme.radiusLg),
+        border: Border.all(
+          color: _sitterEnabled
+              ? PawStayTheme.primary.withValues(alpha: 0.4)
+              : PawStayTheme.surfaceDim,
+        ),
+        boxShadow: PawStayTheme.ambientShadow1,
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color:
+                      PawStayTheme.primaryContainer.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.pets_rounded,
+                    size: 20, color: PawStayTheme.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Pet Sitter',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: PawStayTheme.onSurface,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _sitterEnabled,
+                onChanged: (val) => setState(() => _sitterEnabled = val),
+                activeTrackColor: PawStayTheme.primary,
+                activeThumbColor: Colors.white,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Offer pet sitting services at your location',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              color: PawStayTheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+          if (_sitterEnabled) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildLabeledField(
+                    'Price (₹)',
+                    _sitterPriceCtrl,
+                    hint: '0',
+                    validator: (val) {
+                      if (!_sitterEnabled) return null;
+                      final v =
+                          double.tryParse(val?.trim() ?? '') ?? 0;
+                      return v <= 0 ? 'Enter a valid price' : null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildLabeledField(
+                    'Duration (mins)',
+                    _sitterDurationCtrl,
+                    hint: '60',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Package Card (Bronze / Silver / Gold)
+  // ---------------------------------------------------------------------------
+  Widget _buildPackageCard(_PackageFormData pkg) {
+    const tierColors = {
+      'bronze': Color(0xFFCD7F32),
+      'silver': Color(0xFF78909C),
+      'gold': Color(0xFFD4A017),
+    };
+    final color = tierColors[pkg.tier] ?? PawStayTheme.primary;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(PawStayTheme.radiusLg),
+        border: Border.all(
+          color: pkg.enabled
+              ? color.withValues(alpha: 0.5)
+              : PawStayTheme.surfaceDim,
+        ),
+        boxShadow: PawStayTheme.ambientShadow1,
+      ),
+      child: Column(
+        children: [
+          // Header
+          InkWell(
+            onTap: () => setState(() => pkg.expanded = !pkg.expanded),
+            borderRadius: BorderRadius.circular(PawStayTheme.radiusLg),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.workspace_premium_rounded,
+                        color: color, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${pkg.label} Package',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: PawStayTheme.onSurface,
+                          ),
+                        ),
+                        if (pkg.enabled && pkg.priceCtrl.text.isNotEmpty)
+                          Text(
+                            '₹${pkg.priceCtrl.text}',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              color: PawStayTheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: pkg.enabled,
+                    onChanged: (val) => setState(() {
+                      pkg.enabled = val;
+                      if (val) pkg.expanded = true;
+                    }),
+                    activeTrackColor: PawStayTheme.primary,
+                    activeThumbColor: Colors.white,
+                  ),
+                  Icon(
+                    pkg.expanded ? Icons.expand_less : Icons.expand_more,
+                    color: PawStayTheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Expanded content
+          if (pkg.expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  _buildLabeledField(
+                    'Price (₹)',
+                    pkg.priceCtrl,
+                    hint: '0',
+                    validator: (val) {
+                      if (!pkg.enabled) return null;
+                      final v =
+                          double.tryParse(val?.trim() ?? '') ?? 0;
+                      return v <= 0 ? 'Enter a valid price' : null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildLabeledField(
+                          'Duration',
+                          pkg.durationValueCtrl,
+                          hint: '1',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildUnitDropdown(pkg)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildLabeledField(
+                          'Meals/day',
+                          pkg.mealsCtrl,
+                          hint: '0',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildLabeledField(
+                          'Walks/day',
+                          pkg.walksCtrl,
+                          hint: '0',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildInclusionsEditor(pkg),
+                  const SizedBox(height: 12),
+                  _buildLabeledField(
+                    'Description',
+                    pkg.descCtrl,
+                    type: TextInputType.text,
+                    maxLines: 2,
+                    hint: 'Brief package description',
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnitDropdown(_PackageFormData pkg) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Unit', style: _labelStyle),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: PawStayTheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(PawStayTheme.radiusDefault),
+            border: Border.all(
+              color: PawStayTheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: pkg.durationUnit,
+              isExpanded: true,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                color: PawStayTheme.onSurface,
+              ),
+              items: const [
+                DropdownMenuItem(value: 'hours', child: Text('Hours')),
+                DropdownMenuItem(value: 'days', child: Text('Days')),
+              ],
+              onChanged: (val) =>
+                  setState(() => pkg.durationUnit = val ?? 'hours'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inclusions Editor
+  // ---------------------------------------------------------------------------
+  Widget _buildInclusionsEditor(_PackageFormData pkg) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Extras', style: _labelStyle),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ...pkg.inclusions.map(
+              (inc) => InputChip(
+                label:
+                    Text(inc, style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+                onDeleted: () =>
+                    setState(() => pkg.inclusions.remove(inc)),
+                backgroundColor: PawStayTheme.surfaceContainerLow,
+                deleteIconColor: PawStayTheme.onSurfaceVariant,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 16),
+              label:
+                  Text('Add', style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+              onPressed: () => _showAddInclusionDialog(pkg),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ),
+        if (_kSuggestions.any((s) => !pkg.inclusions.contains(s)))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: _kSuggestions
+                  .where((s) => !pkg.inclusions.contains(s))
+                  .take(6)
+                  .map(
+                    (s) => GestureDetector(
+                      onTap: () =>
+                          setState(() => pkg.inclusions.add(s)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: PawStayTheme.outlineVariant
+                                .withValues(alpha: 0.4),
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '+ $s',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            color: PawStayTheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showAddInclusionDialog(_PackageFormData pkg) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Add Extra',
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration:
+              const InputDecoration(hintText: 'e.g., Grooming, Photo updates'),
+          onSubmitted: (val) {
+            final text = val.trim();
+            if (text.isNotEmpty && !pkg.inclusions.contains(text)) {
+              setState(() => pkg.inclusions.add(text));
+            }
+            Navigator.pop(ctx);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = ctrl.text.trim();
+              if (text.isNotEmpty && !pkg.inclusions.contains(text)) {
+                setState(() => pkg.inclusions.add(text));
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    ).then((_) => ctrl.dispose());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+  Widget _sectionCard({
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -901,19 +1368,16 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: PawStayTheme.primaryContainer.withValues(alpha: 0.2),
+                  color:
+                      PawStayTheme.primaryContainer.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.edit_note_rounded,
-                  size: 20,
-                  color: PawStayTheme.primary,
-                ),
+                child: Icon(icon, size: 20, color: PawStayTheme.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Service Provider Description',
+                  title,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -923,99 +1387,54 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               ),
             ],
           ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            'About You & Your Experience',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: PawStayTheme.onSurface,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          Container(
-            decoration: BoxDecoration(
-              color: PawStayTheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(PawStayTheme.radiusDefault),
-              border: Border.all(
-                color: PawStayTheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-            ),
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 4,
-                  maxLength: 500,
-                  buildCounter:
-                      (
-                        _, {
-                        required currentLength,
-                        required isFocused,
-                        maxLength,
-                      }) => null,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    color: PawStayTheme.onSurface,
-                    height: 1.4,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Write a brief description of your pet care services and background...',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  validator: (val) {
-                    if (val == null || val.trim().isEmpty) {
-                      return 'Description cannot be empty';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 14,
-                          color: PawStayTheme.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Warm & Friendly tone',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: PawStayTheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '$_charCount / 500 characters',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: PawStayTheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          const SizedBox(height: 16),
+          ...children,
         ],
       ),
+    );
+  }
+
+  Widget _buildLabeledField(
+    String label,
+    TextEditingController ctrl, {
+    TextInputType type = TextInputType.number,
+    int maxLines = 1,
+    String? hint,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _labelStyle),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(
+            color: PawStayTheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(PawStayTheme.radiusDefault),
+            border: Border.all(
+              color: PawStayTheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          child: TextFormField(
+            controller: ctrl,
+            keyboardType: type,
+            maxLines: maxLines,
+            validator: validator,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14,
+              color: PawStayTheme.onSurface,
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1053,4 +1472,68 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Package Form Data Helper
+// ---------------------------------------------------------------------------
+class _PackageFormData {
+  final String tier;
+  final String label;
+  bool enabled;
+  bool expanded;
+  int? id;
+  final TextEditingController priceCtrl;
+  final TextEditingController durationValueCtrl;
+  String durationUnit;
+  final TextEditingController mealsCtrl;
+  final TextEditingController walksCtrl;
+  List<String> inclusions;
+  final TextEditingController descCtrl;
+
+  _PackageFormData({required this.tier, required this.label})
+      : enabled = false,
+        expanded = false,
+        priceCtrl = TextEditingController(),
+        durationValueCtrl = TextEditingController(text: '1'),
+        durationUnit = 'hours',
+        mealsCtrl = TextEditingController(text: '0'),
+        walksCtrl = TextEditingController(text: '0'),
+        inclusions = [],
+        descCtrl = TextEditingController();
+
+  void dispose() {
+    priceCtrl.dispose();
+    durationValueCtrl.dispose();
+    mealsCtrl.dispose();
+    walksCtrl.dispose();
+    descCtrl.dispose();
+  }
+
+  void loadFrom(Map<String, dynamic> data) {
+    id = data['id'] as int?;
+    enabled = data['enabled'] == true;
+    priceCtrl.text = _fmtNum(data['price']);
+    durationValueCtrl.text = (data['duration_value'] ?? 1).toString();
+    durationUnit = (data['duration_unit'] ?? 'hours').toString();
+    mealsCtrl.text = (data['meals_per_day'] ?? 0).toString();
+    walksCtrl.text = (data['walks_per_day'] ?? 0).toString();
+    if (data['inclusions'] is List) {
+      inclusions = List<String>.from(data['inclusions']);
+    }
+    descCtrl.text = (data['description'] ?? '').toString();
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (id != null) 'id': id,
+        'tier': tier,
+        'enabled': enabled,
+        'price': double.tryParse(priceCtrl.text.trim()) ?? 0.0,
+        'duration_value': int.tryParse(durationValueCtrl.text.trim()) ?? 1,
+        'duration_unit': durationUnit,
+        'meals_per_day': int.tryParse(mealsCtrl.text.trim()) ?? 0,
+        'walks_per_day': int.tryParse(walksCtrl.text.trim()) ?? 0,
+        'inclusions': inclusions,
+        'description': descCtrl.text.trim(),
+      };
 }

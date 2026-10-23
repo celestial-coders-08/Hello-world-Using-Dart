@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,6 +9,7 @@ import '../user/pet_map_screen.dart';
 import '../user/shop_screen.dart';
 import 'analysis.dart';
 import 'doctor.dart';
+import 'provider_bookings.dart';
 import 'provider_profile_screen.dart';
 import 'slide_bar.dart';
 import 'your_rating.dart';
@@ -23,11 +25,15 @@ class ProviderDashboardScreen extends StatefulWidget {
       _ProviderDashboardScreenState();
 }
 
-class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
+class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
+    with WidgetsBindingObserver {
   int _currentNavIndex = 0;
   String _displayName = 'Service Provider';
   String? _profileImageBase64;
   bool _isProfileComplete = false;
+  int _unreadNotificationCount = 0;
+  int _pendingRequestsCount = 0;
+  Timer? _notificationPollTimer;
 
   double _mapZoom = 1.0;
 
@@ -41,14 +47,76 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     PawStayTheme.enterProviderLightMode();
     _checkProfileStatusAndPrompt();
+    _fetchNotificationCount();
+    _fetchPendingRequestsCount();
+    _notificationPollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _fetchNotificationCount();
+      _fetchPendingRequestsCount();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchNotificationCount();
+      _fetchPendingRequestsCount();
+    }
   }
 
   @override
   void dispose() {
+    _notificationPollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     PawStayTheme.exitProviderLightMode();
     super.dispose();
+  }
+
+  Future<void> _fetchNotificationCount() async {
+    final lookup = widget.providerLookup?.trim();
+    if (lookup == null || lookup.isEmpty) return;
+    final count = await ApiService.fetchUnreadNotificationsCount(
+      recipientId: lookup,
+      role: 'provider',
+    );
+    if (mounted) {
+      setState(() => _unreadNotificationCount = count);
+    }
+  }
+
+  Future<void> _fetchPendingRequestsCount() async {
+    final lookup = widget.providerLookup?.trim();
+    if (lookup == null || lookup.isEmpty) return;
+    final bookings = await ApiService.fetchProviderBookings(
+      providerLookup: lookup,
+      statusFilter: 'pending',
+    );
+    if (mounted) {
+      setState(() => _pendingRequestsCount = bookings.length);
+    }
+  }
+
+  void _openNotificationsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _ProviderNotificationsModal(
+        providerLookup: widget.providerLookup,
+        onNotificationRead: () {
+          _fetchNotificationCount();
+          _fetchPendingRequestsCount();
+        },
+      ),
+    ).then((_) {
+      _fetchNotificationCount();
+      _fetchPendingRequestsCount();
+    });
   }
 
   Future<void> _checkProfileStatusAndPrompt() async {
@@ -129,7 +197,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Set your service charges (Pet Walking, Day Care, Day Care + Food) and provider description to start receiving client bookings.',
+                  'Set your service charges (Pet Sitter & Packages) and profile description to start receiving client bookings.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
@@ -303,6 +371,38 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     ],
                   ),
                   actions: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.notifications_outlined, size: 24),
+                          color: PawStayTheme.onSurface,
+                          onPressed: _openNotificationsSheet,
+                        ),
+                        if (_unreadNotificationCount > 0)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFC62828),
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              child: Text(
+                                _unreadNotificationCount > 9 ? '9+' : '$_unreadNotificationCount',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                     GestureDetector(
                       onTap: _openProfileScreen,
                       child: Padding(
@@ -552,6 +652,106 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       color: _isProfileComplete
                           ? PawStayTheme.secondary
                           : PawStayTheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Requests: N pending card
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFF4EC), Color(0xFFFFECE0)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(PawStayTheme.radiusMd),
+              border: Border.all(
+                color: PawStayTheme.primary.withValues(alpha: 0.35),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: PawStayTheme.primary.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: PawStayTheme.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.pending_actions_rounded,
+                    color: PawStayTheme.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Requests: $_pendingRequestsCount pending',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: PawStayTheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _pendingRequestsCount > 0
+                            ? 'You have pending client bookings waiting for your confirmation.'
+                            : 'All client booking requests are up to date.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: PawStayTheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ProviderBookingsScreen(
+                          providerLookup: widget.providerLookup,
+                          initialTabIndex: 0,
+                        ),
+                      ),
+                    ).then((_) {
+                      _fetchNotificationCount();
+                      _fetchPendingRequestsCount();
+                    });
+                  },
+                  style: TextButton.styleFrom(
+                    backgroundColor: PawStayTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(
+                    'Review',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -988,3 +1188,262 @@ class ProviderMapPainter extends CustomPainter {
     return oldDelegate.zoomLevel != zoomLevel;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Provider Notifications Modal Bottom Sheet
+// ---------------------------------------------------------------------------
+class _ProviderNotificationsModal extends StatefulWidget {
+  final String? providerLookup;
+  final VoidCallback onNotificationRead;
+
+  const _ProviderNotificationsModal({
+    required this.providerLookup,
+    required this.onNotificationRead,
+  });
+
+  @override
+  State<_ProviderNotificationsModal> createState() => _ProviderNotificationsModalState();
+}
+
+class _ProviderNotificationsModalState extends State<_ProviderNotificationsModal> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _notifications = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    final lookup = widget.providerLookup?.trim();
+    if (lookup == null || lookup.isEmpty) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    final items = await ApiService.fetchNotifications(
+      recipientId: lookup,
+      role: 'provider',
+    );
+    if (!mounted) return;
+    setState(() {
+      _notifications = items;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _markAllRead() async {
+    final lookup = widget.providerLookup?.trim();
+    if (lookup == null) return;
+    await ApiService.markAllNotificationsRead(
+      recipientId: lookup,
+      role: 'provider',
+    );
+    widget.onNotificationRead();
+    _loadNotifications();
+  }
+
+  Future<void> _onItemTapped(Map<String, dynamic> item) async {
+    final nid = (item['id'] as num?)?.toInt();
+    if (nid != null && item['is_read'] != true) {
+      await ApiService.markNotificationRead(nid);
+      widget.onNotificationRead();
+    }
+
+    final bookingId = (item['booking_id'] as num?)?.toInt();
+    if (!mounted) return;
+    if (bookingId != null) {
+      Navigator.pop(context);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BookingDetailScreen(
+            bookingId: bookingId,
+            providerLookup: widget.providerLookup,
+          ),
+        ),
+      );
+    } else {
+      _loadNotifications();
+    }
+  }
+
+  String _formatTime(String? dtStr) {
+    if (dtStr == null) return '';
+    try {
+      final dt = DateTime.parse(dtStr);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[dt.month - 1];
+      final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$month ${dt.day} • $hour12:$minute $ampm';
+    } catch (_) {
+      return dtStr;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Notifications',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: PawStayTheme.onSurface,
+                ),
+              ),
+              if (_notifications.any((n) => n['is_read'] != true))
+                TextButton(
+                  onPressed: _markAllRead,
+                  child: Text(
+                    'Mark all as read',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: PawStayTheme.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: PawStayTheme.primary),
+                  )
+                : _notifications.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.notifications_none_rounded,
+                              size: 48,
+                              color: Colors.grey.shade400,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No notifications yet',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                color: PawStayTheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _notifications.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = _notifications[index];
+                          final isUnread = item['is_read'] != true;
+                          final title = item['title']?.toString() ?? 'Notification';
+                          final message = item['message']?.toString() ?? '';
+                          final time = _formatTime(item['created_at']?.toString());
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: isUnread
+                                    ? PawStayTheme.primary.withValues(alpha: 0.15)
+                                    : const Color(0xFFF5EBE6),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.calendar_today_rounded,
+                                size: 20,
+                                color: isUnread
+                                    ? PawStayTheme.primary
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 14,
+                                      fontWeight: isUnread
+                                          ? FontWeight.bold
+                                          : FontWeight.w600,
+                                      color: PawStayTheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                if (isUnread)
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: PawStayTheme.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 2),
+                                Text(
+                                  message,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    color: PawStayTheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                if (time.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    time,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            onTap: () => _onItemTapped(item),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
