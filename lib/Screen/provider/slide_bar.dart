@@ -7,6 +7,7 @@ import '../user/contact_support_screen.dart';
 import '../user/your_orders_screen.dart';
 import 'doctor.dart';
 import 'feedback.dart';
+import 'provider_bookings.dart';
 import 'provider_profile_screen.dart';
 
 class ProviderSlideBar extends StatelessWidget {
@@ -57,6 +58,16 @@ class ProviderSlideBar extends StatelessWidget {
                         onTap: () => _open(
                           context,
                           ProviderProfileScreen(providerLookup: providerLookup),
+                        ),
+                      ),
+                      _buildItem(
+                        context,
+                        icon: Icons.calendar_month_outlined,
+                        title: 'Bookings & Schedule',
+                        route: 'bookings',
+                        onTap: () => _open(
+                          context,
+                          ProviderBookingsScreen(providerLookup: providerLookup),
                         ),
                       ),
                       _buildItem(

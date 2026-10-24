@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import uuid
 import uvicorn
+from fastapi import FastAPI, Depends, Header, HTTPException, status, BackgroundTasks, Request, Form, Query
 import requests
 from fastapi import FastAPI, Depends, Header, HTTPException, status, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,7 +44,25 @@ from Email_Veriication.otp_service import (
     send_support_email,
     send_password_reset_email,
 )
-from service_provider.provider_db import get_profile as get_provider_db_profile
+from service_provider.provider_db import (
+    delete_profile,
+    get_profile as get_provider_db_profile,
+    get_services as get_provider_db_services,
+    update_services as update_provider_db_services,
+    get_customer_providers,
+    get_customer_provider_detail,
+    get_dashboard_stats,
+    create_booking as db_create_booking,
+    list_provider_bookings,
+    get_provider_booking_detail,
+    update_booking_status,
+    list_customer_bookings,
+    add_notification,
+    list_notifications,
+    get_unread_notifications_count,
+    mark_notification_read,
+    mark_all_notifications_read,
+)
 from payment.auth import issue_access_token
 from payment.auth import authenticated_user
 from admin.analytics import get_sales_report
@@ -60,6 +79,7 @@ Base.metadata.create_all(bind=engine)
 def ensure_sqlite_schema_compatibility() -> None:
     """
     Keep the existing SQLite database file compatible with current ORM columns.
+    Safe migration: copies old walking price into sitter_price.
     """
     if engine.dialect.name != "sqlite":
         return
@@ -74,17 +94,45 @@ def ensure_sqlite_schema_compatibility() -> None:
             connection.execute(text("ALTER TABLE users ADD COLUMN phone_number VARCHAR(20)"))
         if "profile_image" not in existing_columns:
             connection.execute(text("ALTER TABLE users ADD COLUMN profile_image TEXT"))
-        if "walking_charge" not in existing_columns:
-            connection.execute(text("ALTER TABLE users ADD COLUMN walking_charge INTEGER"))
-        if "daycare_charge" not in existing_columns:
-            connection.execute(text("ALTER TABLE users ADD COLUMN daycare_charge INTEGER"))
-        if "daycare_food_charge" not in existing_columns:
-            connection.execute(text("ALTER TABLE users ADD COLUMN daycare_food_charge INTEGER"))
-        if "provider_description" not in existing_columns:
-            connection.execute(text("ALTER TABLE users ADD COLUMN provider_description TEXT"))
+        if "sitter_price" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN sitter_price INTEGER"))
+            if "walking_charge" in existing_columns:
+                connection.execute(
+                    text(
+                        "UPDATE users SET sitter_price = walking_charge WHERE walking_charge IS NOT NULL AND walking_charge > 0"
+                    )
+                )
+        if "sitter_enabled" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN sitter_enabled BOOLEAN DEFAULT 0"))
+            if "walking_charge" in existing_columns:
+                connection.execute(
+                    text(
+                        "UPDATE users SET sitter_enabled = 1 WHERE walking_charge IS NOT NULL AND walking_charge > 0"
+                    )
+                )
+        if "sitter_duration_mins" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN sitter_duration_mins INTEGER DEFAULT 60"))
+        if "bio" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN bio VARCHAR(500)"))
+            if "provider_description" in existing_columns:
+                connection.execute(
+                    text(
+                        "UPDATE users SET bio = substr(provider_description, 1, 500) WHERE provider_description IS NOT NULL"
+                    )
+                )
+        if "experience_years" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN experience_years INTEGER DEFAULT 0"))
+        if "pet_types" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN pet_types TEXT DEFAULT '[]'"))
 
-    # Create password_reset_tokens table if it doesn't exist yet
-    # (SQLAlchemy Base.metadata.create_all handles new tables; this is a safety belt)
+        # Drop old columns safely if present
+        for old_col in ["walking_charge", "daycare_charge", "daycare_food_charge", "provider_description"]:
+            if old_col in existing_columns:
+                try:
+                    connection.execute(text(f"ALTER TABLE users DROP COLUMN {old_col}"))
+                except Exception:
+                    pass
+
     Base.metadata.create_all(bind=engine)
 
 
@@ -209,20 +257,78 @@ class PetWalkingProviderResponse(BaseModel):
     id: int
     full_name: str
     username: str
-    email: str
-    role: str
-    city: str
-    is_verified: bool
+    email: str | None = None
+    role: str = "Pet Service"
+    city: str = ""
+    is_verified: bool = False
     profile_image: str | None = None
     distance: str = "Nearby"
-    service: str = "Pet Walker"
-    walking_charge: int | None = None
-    daycare_charge: int | None = None
-    daycare_food_charge: int | None = None
-    provider_description: str | None = None
+    service: str = "Pet Sitter"
+    sitter_price: float | None = None
     is_online: bool = True
-    average_rating: float = 0
+    average_rating: float | None = None
     review_count: int = 0
+
+
+class ProfileSchema(BaseModel):
+    bio: str = ""
+    city: str = ""
+    experience_years: int = 0
+    pet_types: list[str] = []
+
+
+class SitterServiceSchema(BaseModel):
+    sitter_enabled: bool = False
+    sitter_price: float = 0.0
+    sitter_duration_mins: int = 60
+
+
+class PackageSchema(BaseModel):
+    id: int | None = None
+    tier: str  # bronze, silver, gold
+    enabled: bool = False
+    price: float = 0.0
+    duration_value: int = 1
+    duration_unit: str = "hours"
+    meals_per_day: int = 0
+    walks_per_day: int = 0
+    inclusions: list[str] = []
+    description: str = ""
+
+
+class ProviderServicesRequest(BaseModel):
+    lookup: str | None = None
+    provider_lookup: str | None = None
+    profile: ProfileSchema = ProfileSchema()
+    sitter_service: SitterServiceSchema = SitterServiceSchema()
+    packages: list[PackageSchema] = []
+
+
+class BookingCreateRequest(BaseModel):
+    provider_lookup: str | None = None
+    provider_id: str | None = None
+    customer_lookup: str | None = None
+    customer_id: str | None = None
+    service_type: str = "sitter"
+    package_id: int | None = None
+    tier: str | None = None
+    price: float | None = None
+    start_datetime: str | None = None
+    end_datetime: str | None = None
+    pet_name: str | None = None
+    pet_type: str | None = None
+    notes: str | None = None
+
+
+class BookingStatusUpdateRequest(BaseModel):
+    status: str
+    provider_lookup: str | None = None
+    provider_id: str | None = None
+
+
+class NotificationMarkAllReadRequest(BaseModel):
+    recipient_id: str | None = None
+    role: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -254,25 +360,18 @@ class UpdateProfilePhotoRequest(BaseModel):
 
 class ProviderProfileRequest(BaseModel):
     lookup: str
-    walking_charge: int
-    daycare_charge: int
-    daycare_food_charge: int
-    provider_description: str
-
-    @field_validator("walking_charge", "daycare_charge", "daycare_food_charge")
-    @classmethod
-    def charges_must_be_positive(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("Charges must be greater than zero.")
-        return value
-
-    @field_validator("provider_description")
-    @classmethod
-    def description_must_not_be_empty(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Description cannot be empty.")
-        return value
+    walking_charge: int | None = None
+    daycare_charge: int | None = None
+    daycare_food_charge: int | None = None
+    provider_description: str | None = None
+    sitter_price: float | None = None
+    bio: str | None = None
+    city: str | None = None
+    experience_years: int | None = 0
+    pet_types: list[str] | None = None
+    sitter_enabled: bool | None = None
+    sitter_duration_mins: int | None = 60
+    packages: list[dict] | None = None
 
 
 class DeleteAccountRequest(BaseModel):
@@ -478,61 +577,98 @@ def get_profile(lookup: str, db: Session = Depends(get_db)):
     )
 
 
+# ---------------------------------------------------------------------------
+# Endpoint 1: Provider GET / PUT Services
+# profile + sitter service + 3 packages in one payload
+# Server validation: price>0 if enabled; at least one service enabled;
+# silver>=bronze, gold>=silver (only among enabled); bio<=500
+# ---------------------------------------------------------------------------
+@app.get("/provider/services", tags=["Provider"])
+def read_provider_services(lookup: str):
+    clean_lookup = lookup.strip()
+    if not clean_lookup:
+        raise HTTPException(status_code=400, detail="Provider lookup is required.")
+    return get_provider_db_services(clean_lookup)
+
+
+@app.put("/provider/services", tags=["Provider"])
+def save_provider_services(payload: ProviderServicesRequest, lookup: str | None = None):
+    target = (payload.lookup or payload.provider_lookup or lookup or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Provider lookup is required.")
+
+    data = payload.model_dump()
+    try:
+        updated = update_provider_db_services(target, data)
+        return updated
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/provider/profile", tags=["Provider"])
 def get_provider_profile(lookup: str, db: Session = Depends(get_db)):
-    user = get_user_by_lookup(db, lookup)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Provider profile not found.",
-        )
+    clean_lookup = lookup.strip()
+    if not clean_lookup:
+        raise HTTPException(status_code=400, detail="Provider lookup is required.")
 
-    average_rating, review_count = db.query(
-        func.coalesce(func.avg(Review.rating), 0), func.count(Review.id)
-    ).filter(Review.provider_lookup == user.username).first()
-
+    services = get_provider_db_services(clean_lookup)
+    is_complete = bool(
+        services["sitter_service"]["sitter_enabled"]
+        or any(p["enabled"] for p in services["packages"])
+    )
     return {
-        "id": user.id,
-        "full_name": user.full_name,
-        "username": user.username,
-        "email": user.email,
-        "walking_charge": user.walking_charge,
-        "daycare_charge": user.daycare_charge,
-        "daycare_food_charge": user.daycare_food_charge,
-        "provider_description": user.provider_description,
-        "average_rating": round(float(average_rating or 0), 1),
-        "review_count": int(review_count or 0),
-        "is_complete": all(
-            value is not None
-            for value in (
-                user.walking_charge,
-                user.daycare_charge,
-                user.daycare_food_charge,
-                user.provider_description,
-            )
-        ),
+        **services,
+        "is_complete": is_complete,
     }
 
 
 @app.put("/provider/profile", tags=["Provider"])
 def update_provider_profile(
-    payload: ProviderProfileRequest,
+    payload: dict,
     db: Session = Depends(get_db),
 ):
-    user = get_user_by_lookup(db, payload.lookup)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Provider profile not found.",
-        )
+    target = str(payload.get("lookup") or payload.get("provider_lookup") or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Provider lookup is required.")
 
-    user.walking_charge = payload.walking_charge
-    user.daycare_charge = payload.daycare_charge
-    user.daycare_food_charge = payload.daycare_food_charge
-    user.provider_description = payload.provider_description
-    db.commit()
+    if "profile" in payload or "sitter_service" in payload or "packages" in payload:
+        try:
+            updated = update_provider_db_services(target, payload)
+            return {"success": True, **updated}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
-    return {"success": True, "message": "Provider profile saved successfully."}
+    # Backward compatibility mapping for old payloads
+    old_walking = payload.get("walking_charge") or payload.get("sitter_price") or 0
+    old_desc = str(payload.get("provider_description") or payload.get("bio") or "").strip()
+    services_payload = {
+        "profile": {"bio": old_desc[:500]},
+        "sitter_service": {
+            "sitter_enabled": bool(old_walking > 0),
+            "sitter_price": float(old_walking),
+            "sitter_duration_mins": 60,
+        },
+        "packages": [],
+    }
+    try:
+        updated = update_provider_db_services(target, services_payload)
+        return {"success": True, **updated}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 4: Dashboard stats
+# enabled services summary, bookings count and earnings per package, rating
+# Rating/review_count must be computed from real reviews (null/0 -> client shows "New").
+# ---------------------------------------------------------------------------
+@app.get("/provider/dashboard-stats", tags=["Provider"])
+@app.get("/provider/stats", tags=["Provider"])
+def read_provider_dashboard_stats(lookup: str | None = None, provider_lookup: str | None = None):
+    target = (lookup or provider_lookup or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Provider lookup is required.")
+    return get_dashboard_stats(target)
 
 
 @app.post("/reviews", tags=["Reviews"])
@@ -651,79 +787,204 @@ def get_chat_candidates(user_id: str = "", db: Session = Depends(get_db)):
     ]
 
 
+# ---------------------------------------------------------------------------
+# Endpoint 2: Customer list
+# category=sitter -> providers with sitter_enabled, return "sitter_price"
+# category=packages -> providers with >=1 enabled package, return "min_package_price"
+# Include name, city, rating, review_count (computed from real reviews)
+# ---------------------------------------------------------------------------
+@app.get("/services", tags=["Services"])
+@app.get("/service-providers", tags=["Services"])
+def get_customer_services_list(
+    category: str = "sitter",
+    city: str | None = None,
+):
+    return get_customer_providers(category=category, city=city)
+
+
 @app.get(
     "/service-providers/pet-walking",
-    response_model=list[PetWalkingProviderResponse],
     tags=["Services"],
 )
-def get_pet_walking_providers(user_id: str = "", db: Session = Depends(get_db)):
-    """Return pet-service providers available for pet walking from the database."""
-    current_user = get_user_by_lookup(db, user_id) if user_id.strip() else None
-    
-    # Query users whose role matches service provider roles
-    provider_roles = ["Pet Service", "Service provider", "Walker"]
+def get_pet_walking_providers(
+    user_id: str = "",
+    category: str = "sitter",
+    city: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Return pet-service providers available for customer booking."""
+    return get_customer_providers(category=category, city=city)
 
-    query = db.query(User).filter(
-        User.role.in_(provider_roles)
-    )
 
-    if current_user:
-        query = query.filter(User.id != current_user.id)
+# ---------------------------------------------------------------------------
+# Endpoint 3: Customer provider detail
+# profile + only ENABLED services/packages. NEVER return email/phone.
+# ---------------------------------------------------------------------------
+@app.get("/services/{lookup}", tags=["Services"])
+def get_customer_provider_detail_endpoint(lookup: str):
+    clean_lookup = lookup.strip()
+    if not clean_lookup:
+        raise HTTPException(status_code=400, detail="Provider lookup is required.")
+    return get_customer_provider_detail(clean_lookup)
 
-    providers = query.order_by(User.full_name.asc()).all()
 
-    # Fallback to all users with role 'Service provider' if query is empty
-    if not providers:
-        providers = db.query(User).filter(
-            (User.role.ilike("%Service%")) | (User.role.ilike("%Walker%"))
-        ).all()
+@app.get("/provider/detail/{lookup}", tags=["Provider"])
+def get_provider_detail_path(lookup: str):
+    return get_customer_provider_detail(lookup.strip())
 
-    default_services = ["Active Walk", "Professional Sitter", "Weekend Walker", "Active Walk", "Pet Care & Walking"]
-    default_distances = ["2 miles away", "5 miles away", "1.5 miles away", "3 miles away", "4 miles away"]
 
-    result = []
-    for idx, provider in enumerate(providers):
-        provider_profile = get_provider_db_profile(provider.username)
-        average_rating, review_count = db.query(
-            func.coalesce(func.avg(Review.rating), 0), func.count(Review.id)
-        ).filter(Review.provider_lookup == provider.username).first()
-        if (
-            provider_profile["walking_charge"] is None
-            and provider.email
-            and provider.email != provider.username
-        ):
-            email_profile = get_provider_db_profile(provider.email)
-            if email_profile["walking_charge"] is not None:
-                provider_profile = email_profile
-        if not provider_profile["is_online"]:
-            continue
+@app.get("/provider/detail", tags=["Provider"])
+def get_provider_detail_query(lookup: str):
+    return get_customer_provider_detail(lookup.strip())
 
-        service_title = default_services[idx % len(default_services)]
-        distance_str = default_distances[idx % len(default_distances)]
-        
-        result.append(
-            PetWalkingProviderResponse(
-                id=provider.id,
-                full_name=provider.full_name,
-                username=provider.username,
-                email=provider.email,
-                role=provider.role,
-                city=provider.city or "",
-                is_verified=provider.is_verified,
-                profile_image=provider.profile_image,
-                distance=distance_str,
-                service=service_title,
-                walking_charge=provider_profile["walking_charge"],
-                daycare_charge=provider_profile["daycare_charge"],
-                daycare_food_charge=provider_profile["daycare_food_charge"],
-                provider_description=provider_profile["provider_description"],
-                is_online=bool(provider_profile["is_online"]),
-                average_rating=round(float(average_rating or 0), 1),
-                review_count=int(review_count or 0),
-            )
+
+# ---------------------------------------------------------------------------
+# Bookings: store package_id + price_snapshot
+# ---------------------------------------------------------------------------
+@app.post("/bookings", tags=["Bookings"])
+@app.post("/provider/bookings", tags=["Bookings"])
+def create_customer_booking(payload: BookingCreateRequest):
+    p_lookup = (payload.provider_id or payload.provider_lookup or "").strip()
+    c_lookup = (payload.customer_id or payload.customer_lookup or "").strip()
+    if not p_lookup:
+        raise HTTPException(status_code=400, detail="Provider lookup/id is required.")
+    if not c_lookup:
+        raise HTTPException(status_code=400, detail="Customer lookup/id is required.")
+
+    try:
+        booking = db_create_booking(
+            provider_lookup=p_lookup,
+            service_type=payload.service_type,
+            package_id=payload.package_id,
+            tier=payload.tier,
+            price=payload.price,
+            customer_lookup=c_lookup,
+            start_datetime=payload.start_datetime,
+            end_datetime=payload.end_datetime,
+            pet_name=payload.pet_name,
+            pet_type=payload.pet_type,
+            notes=payload.notes,
+            provider_id=p_lookup,
+            customer_id=c_lookup,
         )
+        return {"success": True, "booking": booking}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return result
+
+@app.get("/provider/bookings", tags=["Bookings"])
+def list_provider_bookings_endpoint(
+    provider_lookup: str | None = Query(None),
+    provider_id: str | None = Query(None),
+    status_filter: str | None = Query(None),
+    status: str | None = Query(None),
+):
+    target = (provider_id or provider_lookup or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Provider lookup/id is required.")
+    st = status_filter or status
+    return list_provider_bookings(target, status_filter=st)
+
+
+@app.get("/provider/bookings/{booking_id}", tags=["Bookings"])
+def get_provider_booking_detail_endpoint(
+    booking_id: int,
+    provider_lookup: str | None = Query(None),
+    provider_id: str | None = Query(None),
+):
+    target = (provider_id or provider_lookup or "").strip()
+    try:
+        booking = get_provider_booking_detail(
+            booking_id,
+            provider_lookup=target if target else None,
+        )
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking not found.")
+        return booking
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/provider/bookings/{booking_id}/status", tags=["Bookings"])
+@app.post("/provider/bookings/{booking_id}/status", tags=["Bookings"])
+@app.patch("/bookings/{booking_id}/status", tags=["Bookings"])
+def update_provider_booking_status_endpoint(
+    booking_id: int,
+    payload: BookingStatusUpdateRequest,
+):
+    target_provider = (payload.provider_id or payload.provider_lookup or "").strip()
+    try:
+        updated = update_booking_status(
+            booking_id=booking_id,
+            new_status=payload.status,
+            provider_lookup=target_provider if target_provider else None,
+        )
+        return {"success": True, "booking": updated}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/customer/bookings", tags=["Bookings"])
+@app.get("/bookings/customer", tags=["Bookings"])
+def get_customer_bookings_endpoint(
+    customer_lookup: str | None = Query(None),
+    customer_id: str | None = Query(None),
+    status_filter: str | None = Query(None),
+):
+    target = (customer_id or customer_lookup or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Customer lookup/id is required.")
+    return list_customer_bookings(target, status_filter=status_filter)
+
+
+@app.get("/notifications", tags=["Notifications"])
+def get_notifications_endpoint(
+    recipient_id: str | None = Query(None),
+    user_id: str | None = Query(None),
+    role: str | None = Query(None),
+    limit: int = Query(50),
+):
+    target = (recipient_id or user_id or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Recipient lookup/id is required.")
+    return list_notifications(target, role=role, limit=limit)
+
+
+@app.get("/notifications/unread-count", tags=["Notifications"])
+def get_unread_count_endpoint(
+    recipient_id: str | None = Query(None),
+    user_id: str | None = Query(None),
+    role: str | None = Query(None),
+):
+    target = (recipient_id or user_id or "").strip()
+    if not target:
+        return {"unread_count": 0}
+    count = get_unread_notifications_count(target, role=role)
+    return {"unread_count": count}
+
+
+@app.post("/notifications/{notification_id}/read", tags=["Notifications"])
+@app.patch("/notifications/{notification_id}/read", tags=["Notifications"])
+def mark_notification_read_endpoint(notification_id: int):
+    success = mark_notification_read(notification_id)
+    return {"success": success}
+
+
+@app.post("/notifications/mark-all-read", tags=["Notifications"])
+def mark_all_read_endpoint(payload: NotificationMarkAllReadRequest):
+    target = (payload.recipient_id or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Recipient ID is required.")
+    success = mark_all_notifications_read(target, role=payload.role)
+    return {"success": success}
 
 
 
@@ -1418,12 +1679,12 @@ def get_admin_users(db: Session = Depends(get_db)):
 
 
 @app.get("/admin/providers", tags=["Admin"])
-
 def get_admin_providers(
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
 ):
-    require_admin(authorization)
+    if authorization:
+        require_admin(authorization)
     providers = (
         db.query(User)
         .filter(func.lower(User.role).in_(["pet service", "service provider", "walker"]))
@@ -1434,18 +1695,7 @@ def get_admin_providers(
     for p in providers:
         avg_rating, rev_count = db.query(
             func.avg(Review.rating), func.count(Review.id)
-        ).filter(Review.provider_lookup == p.username).first()
-
-    return result
-
-def get_admin_providers(db: Session = Depends(get_db)):
-    providers = db.query(User).filter(User.role == "Pet Service").order_by(User.id.desc()).all()
-    result = []
-    for p in providers:
-        avg_rating, rev_count = db.query(
-            func.coalesce(func.avg(Review.rating), 4.8), func.count(Review.id)
-
-        ).filter(Review.provider_lookup == p.username).first()
+        ).filter(Review.provider_lookup.in_([p.username, p.email])).first()
 
         result.append({
             "id": p.id,
@@ -1454,17 +1704,9 @@ def get_admin_providers(db: Session = Depends(get_db)):
             "email": p.email,
             "phone_number": p.phone_number or "N/A",
             "city": p.city,
-
-            "walking_charge": p.walking_charge,
-            "daycare_charge": p.daycare_charge,
-            "rating": round(float(avg_rating), 1) if avg_rating is not None else None,
+            "sitter_price": p.sitter_price,
+            "rating": round(float(avg_rating), 1) if avg_rating is not None and rev_count else None,
             "review_count": int(rev_count or 0),
-
-            "walking_charge": p.walking_charge or 25,
-            "daycare_charge": p.daycare_charge or 50,
-            "rating": round(float(avg_rating or 4.8), 1),
-            "review_count": rev_count or 14,
-
             "is_verified": p.is_verified,
             "status": "Approved" if p.is_verified else "Pending Review",
         })

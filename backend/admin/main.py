@@ -235,8 +235,7 @@ def get_admin_providers(
             User.email,
             User.phone_number,
             User.city,
-            User.walking_charge,
-            User.daycare_charge,
+            User.sitter_price,
             User.is_verified,
         )
         .filter(
@@ -260,8 +259,7 @@ def get_admin_providers(
                 "email": provider.email,
                 "phone_number": provider.phone_number or "N/A",
                 "city": provider.city,
-                "walking_charge": provider.walking_charge,
-                "daycare_charge": provider.daycare_charge,
+                "sitter_price": provider.sitter_price,
                 "rating": (
                     round(float(average_rating), 1)
                     if average_rating is not None
