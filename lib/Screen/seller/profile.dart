@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/seller_api_service.dart';
+import '../../services/session_service.dart';
 import '../../theme/pawstay_theme.dart';
 import '../../widgets/profile_avatar.dart';
 import '../auth/login.dart';
@@ -73,8 +73,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.remove('access_token');
+    await SessionService.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

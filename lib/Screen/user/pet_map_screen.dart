@@ -397,11 +397,15 @@ class PetMapScreen extends StatefulWidget {
   State<PetMapScreen> createState() => _PetMapScreenState();
 }
 
-class _PetMapScreenState extends State<PetMapScreen> {
+class _PetMapScreenState extends State<PetMapScreen>
+    with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
+  late final AnimationController _positionAnimationController;
 
   StreamSubscription<Position>? _positionSubscription;
   LatLng? _currentPosition;
+  LatLng? _animationStartPosition;
+  LatLng? _animationTargetPosition;
   LatLng? _source;
   LatLng? _destination;
   _PetService? _selectedPlace;
@@ -425,6 +429,8 @@ class _PetMapScreenState extends State<PetMapScreen> {
   LatLng? _routeProgressPosition;
   int _currentInstructionIndex = 0;
   double _headingDegrees = 0;
+  double _animationStartHeading = 0;
+  double _animationTargetHeading = 0;
   int _routeRequestId = 0;
   int _offRouteUpdates = 0;
   DateTime? _lastRerouteAt;
@@ -437,14 +443,53 @@ class _PetMapScreenState extends State<PetMapScreen> {
   @override
   void initState() {
     super.initState();
+    _positionAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..addListener(_followAnimatedPosition);
     _initializeLocation();
   }
 
   @override
   void dispose() {
     _positionSubscription?.cancel();
+    _positionAnimationController.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  LatLng? get _displayPosition {
+    final start = _animationStartPosition;
+    final target = _animationTargetPosition ?? _currentPosition;
+    if (start == null || target == null) return _currentPosition;
+    final progress = Curves.easeOutCubic.transform(
+      _positionAnimationController.value,
+    );
+    return LatLng(
+      start.latitude + (target.latitude - start.latitude) * progress,
+      start.longitude + (target.longitude - start.longitude) * progress,
+    );
+  }
+
+  double get _displayHeading {
+    final progress = Curves.easeOutCubic.transform(
+      _positionAnimationController.value,
+    );
+    final difference =
+        (_animationTargetHeading - _animationStartHeading + 540) % 360 - 180;
+    return (_animationStartHeading + difference * progress + 360) % 360;
+  }
+
+  void _followAnimatedPosition() {
+    if (!_isNavigating) return;
+    final point = _displayPosition;
+    if (point == null) return;
+
+    _mapController.moveAndRotate(
+      point,
+      math.max(_mapController.camera.zoom, 15).toDouble(),
+      -_displayHeading,
+    );
   }
 
   Future<void> _initializeLocation() async {
@@ -480,6 +525,8 @@ class _PetMapScreenState extends State<PetMapScreen> {
       final point = LatLng(position.latitude, position.longitude);
       setState(() {
         _currentPosition = point;
+        _animationStartPosition = point;
+        _animationTargetPosition = point;
         _source = point;
         _sourceName = 'My current location';
         _isLoadingLocation = false;
@@ -487,13 +534,15 @@ class _PetMapScreenState extends State<PetMapScreen> {
         if (position.heading.isFinite && position.heading >= 0) {
           _headingDegrees = position.heading;
         }
+        _animationStartHeading = _headingDegrees;
+        _animationTargetHeading = _headingDegrees;
       });
       _mapController.move(point, 14);
       _positionSubscription =
           Geolocator.getPositionStream(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.bestForNavigation,
-              distanceFilter: 5,
+              distanceFilter: 1,
             ),
           ).listen(
             _onPositionUpdate,
@@ -521,11 +570,20 @@ class _PetMapScreenState extends State<PetMapScreen> {
   void _onPositionUpdate(Position position) {
     if (!mounted) return;
     final point = LatLng(position.latitude, position.longitude);
+    final startPosition = _displayPosition ?? _currentPosition ?? point;
+    final startHeading = _displayHeading;
+    final targetHeading = position.heading.isFinite && position.heading >= 0
+        ? position.heading
+        : _headingDegrees;
 
     setState(() {
       _currentPosition = point;
+      _animationStartPosition = startPosition;
+      _animationTargetPosition = point;
+      _animationStartHeading = startHeading;
+      _animationTargetHeading = targetHeading;
       if (position.heading.isFinite && position.heading >= 0) {
-        _headingDegrees = position.heading;
+        _headingDegrees = targetHeading;
       }
       if (!_isNavigating && _sourceName == 'My current location') {
         _source = point;
@@ -534,15 +592,9 @@ class _PetMapScreenState extends State<PetMapScreen> {
         _updateRouteProgress(point);
       }
     });
+    _positionAnimationController.forward(from: 0);
 
     if (_isNavigating) {
-      _mapController.move(
-        point,
-        math.max(_mapController.camera.zoom, 15).toDouble(),
-      );
-      if (position.heading.isFinite && position.heading >= 0) {
-        _mapController.rotate(-position.heading);
-      }
       _checkOffRoute(point);
     }
   }
@@ -1030,13 +1082,13 @@ class _PetMapScreenState extends State<PetMapScreen> {
             size: 32,
           ),
         ),
-      if (_currentPosition case final point?)
+      if (_displayPosition case final point?)
         Marker(
           point: point,
           width: 42,
           height: 42,
           child: Transform.rotate(
-            angle: _headingDegrees * math.pi / 180,
+            angle: _displayHeading * math.pi / 180,
             child: Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF2367C9),
@@ -1944,7 +1996,10 @@ class _PetMapScreenState extends State<PetMapScreen> {
                 maxZoom: 19,
               ),
               if (_polylines.isNotEmpty) PolylineLayer(polylines: _polylines),
-              MarkerLayer(markers: _markers),
+              AnimatedBuilder(
+                animation: _positionAnimationController,
+                builder: (context, child) => MarkerLayer(markers: _markers),
+              ),
             ],
           ),
           Column(

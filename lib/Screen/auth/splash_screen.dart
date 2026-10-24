@@ -1,7 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../Screen/admin/admin_main_screen.dart';
+import '../../Screen/provider/provider_home.dart';
+import '../../Screen/seller/seller_dashboard_screen.dart';
+import '../../Screen/user/home.dart';
+import '../../services/session_service.dart';
 import '../../theme/pawstay_theme.dart';
 import 'login.dart';
 
@@ -120,15 +127,60 @@ class _SplashScreenState extends State<SplashScreen>
     // Navigate after splash hold
     await Future.delayed(const Duration(milliseconds: 1400));
     if (mounted) {
+      final destination = await _savedLoginDestination();
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (c, a, sa) => const LoginScreen(),
+          pageBuilder: (c, a, sa) => destination,
           transitionsBuilder: (c, a, sa, child) =>
               FadeTransition(opacity: a, child: child),
           transitionDuration: const Duration(milliseconds: 600),
         ),
       );
+    }
+  }
+
+  Future<Widget> _savedLoginDestination() async {
+    final preferences = await SharedPreferences.getInstance();
+    final token = preferences.getString('access_token');
+    if (token == null || token.isEmpty) return const LoginScreen();
+
+    final claims = _tokenClaims(token);
+    final expiry = claims?['exp'];
+    if (expiry is! num ||
+        expiry.toInt() <= DateTime.now().millisecondsSinceEpoch ~/ 1000) {
+      await SessionService.logout();
+      return const LoginScreen();
+    }
+
+    final lookup =
+        preferences.getString('session_lookup') ?? claims?['email']?.toString();
+    if (lookup == null || lookup.trim().isEmpty) {
+      await SessionService.logout();
+      return const LoginScreen();
+    }
+
+    final role =
+        (preferences.getString('session_role') ?? 'User').trim().toLowerCase();
+    if (role == 'admin') return AdminMainScreen(adminEmail: lookup);
+    if (role == 'seller') return SellerDashboardScreen(sellerLookup: lookup);
+    if (role == 'pet service' || role.contains('service provider')) {
+      return ProviderDashboardScreen(providerLookup: lookup);
+    }
+    return HomeScreen(userLookup: lookup);
+  }
+
+  Map<String, dynamic>? _tokenClaims(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload =
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final claims = jsonDecode(payload);
+      return claims is Map<String, dynamic> ? claims : null;
+    } catch (_) {
+      return null;
     }
   }
 

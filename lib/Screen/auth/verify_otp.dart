@@ -114,6 +114,8 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
         if (accessToken != null && accessToken.isNotEmpty) {
           final preferences = await SharedPreferences.getInstance();
           await preferences.setString('access_token', accessToken);
+          await preferences.setString('session_lookup', _normalizedEmail);
+          await preferences.setString('session_role', 'User');
         }
         _showSnack('Email verified successfully.');
         await Future<void>.delayed(const Duration(milliseconds: 300));

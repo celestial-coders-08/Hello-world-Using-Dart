@@ -16,10 +16,11 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  // Step 1 = Enter Email, 2 = Verify OTP, 3 = Reset Password, 4 = Success
+  // Step 1 = Enter email and mobile, 2 = Verify OTP, 3 = Reset Password, 4 = Success
   int _currentStep = 1;
 
   final _emailCtr = TextEditingController();
+  final _mobileCtr = TextEditingController();
   final List<TextEditingController> _otpCtrs = List.generate(
     4,
     (_) => TextEditingController(),
@@ -40,6 +41,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _emailCtr.dispose();
+    _mobileCtr.dispose();
     for (final controller in _otpCtrs) {
       controller.dispose();
     }
@@ -52,6 +54,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   String get _email => _emailCtr.text.trim().toLowerCase();
+  String get _mobileNumber => _mobileCtr.text.trim();
   String get _otpCode => _otpCtrs.map((c) => c.text).join();
 
   void _showSnackBar(String msg, {bool isError = false}) {
@@ -69,7 +72,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  // --- Step 1: Send OTP to Email ---
+  // --- Step 1: Check email and send OTP by SMS ---
   Future<void> _sendOtp() async {
     if (!_formKeyEmail.currentState!.validate()) return;
 
@@ -80,7 +83,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           .post(
             Uri.parse('${ApiConfig.baseUrl}/forgot-password'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'email': _email}),
+            body: jsonEncode({'email': _email, 'mobile_number': _mobileNumber}),
           )
           .timeout(const Duration(seconds: 10));
 
@@ -88,7 +91,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
       if (res.statusCode == 200) {
         setState(() => _currentStep = 2);
-        _showSnackBar(data['message'] ?? 'OTP code sent to your email.');
+        _showSnackBar(data['message'] ?? 'OTP code sent to your mobile number.');
       } else {
         _showSnackBar(data['detail'] ?? 'Failed to send OTP.', isError: true);
       }
@@ -146,7 +149,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           .post(
             Uri.parse('${ApiConfig.baseUrl}/forgot-password'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'email': _email}),
+            body: jsonEncode({'email': _email, 'mobile_number': _mobileNumber}),
           )
           .timeout(const Duration(seconds: 10));
 
@@ -159,7 +162,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         if (_otpFocusNodes.isNotEmpty) {
           _otpFocusNodes.first.requestFocus();
         }
-        _showSnackBar('A new OTP has been sent to your email.');
+        _showSnackBar('A new OTP has been sent to your mobile number.');
       } else {
         _showSnackBar(data['detail'] ?? 'Failed to resend OTP.', isError: true);
       }
@@ -318,7 +321,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                     _currentStep == 1
                                         ? Icons.vpn_key_rounded
                                         : _currentStep == 2
-                                        ? Icons.mark_email_read_rounded
+                                        ? Icons.sms_outlined
                                         : _currentStep == 3
                                         ? Icons.lock_reset_rounded
                                         : Icons.check_circle_rounded,
@@ -372,9 +375,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             _currentStep == 1
-                                ? "Enter your email address and we'll send a 4-digit verification code to your inbox."
+                                ? "Enter your email address and mobile number. We'll send a 4-digit verification code by SMS."
                                 : _currentStep == 2
-                                ? "Enter the 4-digit verification code sent to $_email."
+                                ? "Enter the 4-digit verification code sent to +91 $_mobileNumber."
                                 : _currentStep == 3
                                 ? "Create a new strong password for your PawStay account."
                                 : "Your password has been successfully reset. You can now log in with your new credentials.",
@@ -449,7 +452,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  // --- Step 1: Email Form ---
+  // --- Step 1: Email and mobile form ---
   Widget _buildStep1Email(Color primaryBrown) {
     const lightInputFill = Color(0xFFEFEBE6);
 
@@ -512,6 +515,62 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
               ).hasMatch(val.trim())) {
                 return 'Please enter a valid email address';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Mobile Number',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _mobileCtr,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              color: Colors.black87,
+            ),
+            decoration: InputDecoration(
+              hintText: '9876543210',
+              hintStyle: GoogleFonts.plusJakartaSans(
+                color: Colors.black38,
+                fontSize: 15,
+              ),
+              prefixText: '+91  ',
+              prefixStyle: GoogleFonts.plusJakartaSans(
+                color: Colors.black87,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+              filled: true,
+              fillColor: lightInputFill,
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 16,
+                horizontal: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: primaryBrown, width: 1.5),
+              ),
+            ),
+            validator: (val) {
+              if (val == null || val.length != 10) {
+                return 'Please enter a valid 10-digit mobile number';
               }
               return null;
             },

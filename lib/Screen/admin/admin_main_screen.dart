@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/session_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../auth/login.dart';
 import 'admin_theme.dart';
@@ -274,8 +275,10 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
                 backgroundColor: AdminTheme.statusDanger,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(ctx);
+                await SessionService.logout();
+                if (!context.mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (_) => const LoginScreen()),

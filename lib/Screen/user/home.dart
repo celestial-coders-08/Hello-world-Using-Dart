@@ -29,6 +29,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
+  final Set<int> _loadedNavTabs = {0};
   String _displayName = 'Pet Parent';
   bool _isLoadingUser = false;
   String? _userProfileImageBase64;
@@ -277,11 +278,15 @@ class _HomeScreenState extends State<HomeScreen> {
           index: _currentNavIndex,
           children: [
             _buildDashboard(isDesktop),
-            ChatScreen(
-              userLookup: widget.userLookup,
-              onBackPressed: () => setState(() => _currentNavIndex = 0),
-            ),
-            ShopScreen(userLookup: widget.userLookup),
+            _loadedNavTabs.contains(1)
+                ? ChatScreen(
+                    userLookup: widget.userLookup,
+                    onBackPressed: () => setState(() => _currentNavIndex = 0),
+                  )
+                : const SizedBox.shrink(),
+            _loadedNavTabs.contains(2)
+                ? ShopScreen(userLookup: widget.userLookup)
+                : const SizedBox.shrink(),
             const Center(child: Text('AI Assistant coming soon')),
           ],
         ),
@@ -335,6 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: (index) {
               setState(() {
                 _currentNavIndex = index;
+                _loadedNavTabs.add(index);
               });
               if (index == 3) {
                 // AI Agent — coming soon
@@ -546,8 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     alpha: 0.2,
                   ),
                   iconColor: PawStayTheme.primary,
-                  onTap: () =>
-                      _showServiceAlert('Daily wellness & care planner'),
+                  onTap: _openPetCareOptions,
                 ),
                 _buildBentoItem(
                   title: 'Pet Walking',
@@ -834,130 +839,123 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showServiceModalSheet(
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: PawStayTheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color.withValues(alpha: 0.15),
-                ),
-                child: Icon(icon, color: color, size: 30),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Booking request sent for $title!',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                          ),
-                        ),
-                        backgroundColor: PawStayTheme.primary,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.calendar_today_rounded, size: 18),
-                  label: Text(
-                    'Book Now',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: PawStayTheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  label: Text(
-                    'Close',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+  void _openPetCareOptions() {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _PetCareOptionsScreen(
+          userLookup: widget.userLookup,
+          onDayCareReturn: (targetNavIndex) {
+            if (targetNavIndex != null && mounted) {
+              setState(() => _currentNavIndex = targetNavIndex);
+            }
+          },
+        ),
+      ),
     );
   }
+}
 
-  void _showServiceAlert(String serviceName) {
-    _showServiceModalSheet(
-      serviceName,
-      'Explore top verified service providers for your pet.',
-      Icons.pets_rounded,
-      PawStayTheme.primary,
+class _PetCareOptionsScreen extends StatelessWidget {
+  final String? userLookup;
+  final ValueChanged<int?> onDayCareReturn;
+
+  const _PetCareOptionsScreen({
+    required this.userLookup,
+    required this.onDayCareReturn,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      backgroundColor: colors.surface,
+      appBar: AppBar(
+        title: Text(
+          'Pet Care',
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            'Choose a service for your pet',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 16,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _PetCareOptionTile(
+            title: 'Day Care',
+            subtitle: 'Find walking and care providers',
+            icon: Icons.directions_walk_rounded,
+            onTap: () async {
+              final targetNavIndex = await Navigator.push<int>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PetWalkingScreen(userLookup: userLookup),
+                ),
+              );
+              onDayCareReturn(targetNavIndex);
+            },
+          ),
+          const SizedBox(height: 14),
+          _PetCareOptionTile(
+            title: 'Doctor',
+            subtitle: 'Browse veterinary care',
+            icon: Icons.medical_services_rounded,
+            onTap: () {
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DoctorScreen(userLookup: userLookup),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PetCareOptionTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _PetCareOptionTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 12,
+        ),
+        leading: CircleAvatar(
+          backgroundColor: PawStayTheme.primaryContainer,
+          foregroundColor: PawStayTheme.primary,
+          child: Icon(icon),
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
     );
   }
 }

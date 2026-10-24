@@ -193,7 +193,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Sell Item',
+          'Add Product',
           style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
         ),
         leading: IconButton(

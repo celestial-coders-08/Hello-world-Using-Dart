@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import uuid
 import uvicorn
 from fastapi import FastAPI, Depends, Header, HTTPException, status, BackgroundTasks, Request, Form, Query
+import requests
+from fastapi import FastAPI, Depends, Header, HTTPException, status, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, EmailStr, field_validator
@@ -66,7 +68,7 @@ from payment.auth import authenticated_user
 from admin.analytics import get_sales_report
 from seller.seller_db import connection as seller_db_connection
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # ---------------------------------------------------------------------------
 # Create tables on startup (idempotent — safe to call every time)
@@ -184,8 +186,8 @@ class SignupRequest(BaseModel):
         v = v.strip()
         if not v.isdigit():
             raise ValueError("Postal code must contain digits only.")
-        if len(v) < 4 or len(v) > 10:
-            raise ValueError("Postal code must be between 4 and 10 digits.")
+        if len(v) != 6:
+            raise ValueError("Postal code must be exactly 6 digits.")
         return v
 
     @field_validator("full_name", "state", "city", "role")
@@ -213,6 +215,15 @@ class ResendOtpRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+    mobile_number: str
+
+    @field_validator("mobile_number")
+    @classmethod
+    def valid_indian_mobile_number(cls, value: str) -> str:
+        mobile_number = value.strip()
+        if not mobile_number.isdigit() or len(mobile_number) != 10:
+            raise ValueError("Mobile number must be exactly 10 digits.")
+        return mobile_number
 
 
 class ResetPasswordRequest(BaseModel):
@@ -1101,6 +1112,55 @@ def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
     )
 
 
+HTTPSMS_SEND_URL = "https://api.httpsms.com/v1/messages/send"
+
+
+def _as_indian_e164_number(number: str) -> str:
+    """Convert a configured or entered Indian number to httpSMS E.164 format."""
+    digits = "".join(char for char in number if char.isdigit())
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    if len(digits) != 10:
+        raise ValueError("Indian mobile numbers must contain exactly 10 digits.")
+    return f"+91{digits}"
+
+
+def send_password_reset_sms(to_mobile_number: str, otp_code: str) -> bool:
+    """Send a password-reset OTP through the configured httpSMS gateway."""
+    api_key = os.getenv("HTTPSMS_API_KEY", "").strip()
+    sender_number = os.getenv("MOBILE_NO", "").strip()
+    if not api_key or not sender_number:
+        print("[SMS] MOBILE_NO or HTTPSMS_API_KEY is not configured.")
+        return False
+
+    try:
+        headers = {
+            "x-api-key": api_key,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "content": (
+                f"Your PawStay password reset OTP is {otp_code}. "
+                "It expires in 10 minutes. Do not share this code."
+            ),
+            "from": _as_indian_e164_number(sender_number),
+            "to": _as_indian_e164_number(to_mobile_number),
+        }
+        response = requests.post(
+            HTTPSMS_SEND_URL,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        print(f"[SMS] httpSMS response: {response.status_code} {response.text}")
+        response.raise_for_status()
+        return True
+    except (requests.RequestException, ValueError) as exc:
+        print(f"[SMS] Password-reset SMS could not be sent: {exc}")
+        return False
+
+
 @app.post("/forgot-password", response_model=MessageResponse, tags=["Auth"])
 def forgot_password(
     payload: ForgotPasswordRequest,
@@ -1108,7 +1168,7 @@ def forgot_password(
     db: Session = Depends(get_db),
 ):
     """
-    Send a 4-digit OTP code to the user's email for password reset.
+    Confirm the email exists, then send a 4-digit password-reset OTP by SMS.
     """
     email_str = str(payload.email).strip().lower()
     user = db.query(User).filter(User.email == email_str).first()
@@ -1121,11 +1181,11 @@ def forgot_password(
 
     otp_code = generate_otp(4)
     save_otp(db, email_str, otp_code)
-    background_tasks.add_task(send_otp_email, email_str, otp_code, user.full_name)
+    background_tasks.add_task(send_password_reset_sms, payload.mobile_number, otp_code)
 
     return MessageResponse(
         success=True,
-        message=f"An OTP verification code has been sent to {email_str}.",
+        message="An OTP verification code has been sent to your mobile number.",
     )
 
 
@@ -1663,7 +1723,3 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
     )
-
-
-
-    

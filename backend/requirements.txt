@@ -9,4 +9,5 @@ email-validator
 jwt
 python-socketio
 python-multipart
+requests
 
