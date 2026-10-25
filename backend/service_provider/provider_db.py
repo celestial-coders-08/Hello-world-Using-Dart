@@ -1189,18 +1189,25 @@ def get_provider_booking_detail(
             return None
         if provider_lookup and provider_lookup.strip():
             p_clean = provider_lookup.strip()
+<<<<<<< HEAD
             provider_aliases = _all_provider_aliases(p_clean)
+=======
+>>>>>>> 8501183f008d47a8e33e8309342b6ea1a30e1429
             row_p = (
                 row["provider_id"]
                 if "provider_id" in row.keys() and row["provider_id"]
                 else row["provider_lookup"]
             )
             row_p = str(row_p or "").strip()
+<<<<<<< HEAD
             # A booking may use the provider's username while the active
             # provider session uses their email (or vice versa).  The list
             # endpoint already recognizes both identifiers, so apply that
             # same ownership rule when opening a notification's booking.
             if row_p and row_p not in provider_aliases:
+=======
+            if row_p and row_p != p_clean:
+>>>>>>> 8501183f008d47a8e33e8309342b6ea1a30e1429
                 raise PermissionError("Unauthorized: You do not own this booking.")
         return _format_booking_for_provider(row)
 
@@ -1229,8 +1236,12 @@ def update_booking_status(
 
         if provider_lookup and provider_lookup.strip():
             p_clean = provider_lookup.strip()
+<<<<<<< HEAD
             provider_aliases = _all_provider_aliases(p_clean)
             if row_provider and row_provider not in provider_aliases:
+=======
+            if row_provider and row_provider != p_clean:
+>>>>>>> 8501183f008d47a8e33e8309342b6ea1a30e1429
                 raise PermissionError("Unauthorized: Only the owning provider can update this booking status.")
 
         allowed = ALLOWED_TRANSITIONS.get(current_status, set())

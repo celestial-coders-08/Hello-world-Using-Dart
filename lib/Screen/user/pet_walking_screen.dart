@@ -33,25 +33,37 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
   late String _selectedCategory; // 'sitter' or 'packages'
   bool _isLoading = true;
   String? _errorMessage;
-  String _searchQuery = '';
-  final TextEditingController _searchCtrl = TextEditingController();
+  String? _userProfileImageBase64;
 
-  List<Map<String, dynamic>> _providers = [];
-  final Map<String, Uint8List?> _avatarBytesCache = {};
-
-  bool get _isPackages => _selectedCategory == 'packages';
+  List<PetWalker> _walkers = [];
 
   @override
   void initState() {
     super.initState();
-    _selectedCategory = 'sitter';
-    _fetchProviders();
+    _fetchUserProfile();
+    _fetchPetWalkers();
   }
 
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
+  Future<void> _fetchUserProfile() async {
+    if (widget.userLookup == null || widget.userLookup!.trim().isEmpty) return;
+    try {
+      final url =
+          '${ApiConfig.baseUrl}/profile?lookup=${Uri.encodeQueryComponent(widget.userLookup!.trim())}';
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          final imgStr = data['profile_image']?.toString();
+          if (imgStr != null && imgStr.isNotEmpty) {
+            setState(() {
+              _userProfileImageBase64 = imgStr;
+            });
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchProviders() async {
@@ -173,88 +185,10 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         ],
       ),
 
-      body: Column(
-        children: [
-          // Top Category Selector & Search
-          Container(
-            color: PawStayTheme.surface,
-            padding: const EdgeInsets.fromLTRB(18, 4, 18, 14),
-            child: Column(
-              children: [
-                // Category Pill
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildCategoryPill(
-                        title: 'Pet Sitter',
-                        icon: Icons.pets_rounded,
-                        isSelected: true,
-                        onTap: () => _switchCategory('sitter'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Search Bar
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7EFE9),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search_rounded,
-                          size: 20, color: PawStayTheme.onSurfaceVariant),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchCtrl,
-                          onChanged: (val) => setState(() => _searchQuery = val),
-                          decoration: InputDecoration(
-                            hintText: _isPackages
-                                ? 'Search packages, sitters, or city...'
-                                : 'Search sitters or city...',
-                            hintStyle: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              color: PawStayTheme.onSurfaceVariant.withValues(alpha: 0.7),
-                            ),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 14,
-                            color: PawStayTheme.onSurface,
-                          ),
-                        ),
-                      ),
-                      if (_searchQuery.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            _searchCtrl.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                          child: Icon(Icons.clear_rounded,
-                              size: 18, color: PawStayTheme.onSurfaceVariant),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Main List View
-          Expanded(
-            child: RefreshIndicator(
-              color: PawStayTheme.primary,
-              onRefresh: _fetchProviders,
-              child: _buildBody(),
-            ),
-          ),
-        ],
+      body: RefreshIndicator(
+        color: PawStayTheme.primary,
+        onRefresh: _fetchPetWalkers,
+        child: _buildBody(),
       ),
 
       // Bottom Navigation matching User screens
@@ -636,89 +570,27 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     );
   }
 
-  Widget _buildRatingBadge(double? rating, int reviewCount) {
-    if (rating != null && rating > 0 && reviewCount > 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFFBEB),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.star_rounded, size: 13, color: Color(0xFFD97706)),
-            const SizedBox(width: 2),
-            Text(
-              rating.toStringAsFixed(1),
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFFB45309),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: PawStayTheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        'New',
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: PawStayTheme.secondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAvatar(Map<String, dynamic> provider, String name, double size) {
-    final img = provider['profile_image']?.toString();
-    if (img != null && img.trim().isNotEmpty) {
-      final raw = img.trim();
-      final bytes = _avatarBytesCache.putIfAbsent(raw, () {
-        try {
-          return base64Decode(raw.contains(',') ? raw.split(',').last : raw);
-        } catch (_) {
-          return null;
-        }
-      });
-      if (bytes != null) {
-        return Image.memory(
-          bytes,
-          width: size,
-          height: size,
-          cacheWidth: (size * 2).round(),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _initialsAvatar(name, size),
+  Widget _buildProfileImage(PetWalker walker) {
+    if (walker.profileImage != null && walker.profileImage!.trim().isNotEmpty) {
+      try {
+        final bytes = base64Decode(
+          walker.profileImage!.contains(',')
+              ? walker.profileImage!.split(',').last
+              : walker.profileImage!,
         );
-      }
-    }
-    return _initialsAvatar(name, size);
-  }
 
-  Widget _initialsAvatar(String name, double size) {
-    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
-    return Container(
-      width: size,
-      height: size,
-      color: const Color(0xFFFCEEE8),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: size * 0.4,
-          fontWeight: FontWeight.bold,
-          color: PawStayTheme.primary,
-        ),
-      ),
+        return CircleAvatar(
+          radius: 26,
+          backgroundColor: const Color(0xFFFAF0EB),
+          backgroundImage: MemoryImage(bytes),
+        );
+      } catch (_) {}
+    }
+
+    return CircleAvatar(
+      radius: 26,
+      backgroundColor: const Color(0xFFFAF0EB),
+      child: const Icon(Icons.person, color: PawStayTheme.primary, size: 26),
     );
   }
 }
