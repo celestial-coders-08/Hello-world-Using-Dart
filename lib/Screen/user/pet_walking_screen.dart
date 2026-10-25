@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -12,12 +11,15 @@ import 'sitter_profile_screen.dart';
 String _fmtPrice(dynamic v) {
   if (v == null) return '0';
   final n = v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
-  return n == n.truncateToDouble() ? n.toInt().toString() : n.toStringAsFixed(2);
+  return n == n.truncateToDouble()
+      ? n.toInt().toString()
+      : n.toStringAsFixed(2);
 }
 
 class PetWalkingScreen extends StatefulWidget {
   final String? userLookup;
-  final String initialCategory; // 'Pet Sitter' or 'Packages' or 'sitter' or 'packages'
+  final String
+  initialCategory; // 'Pet Sitter' or 'Packages' or 'sitter' or 'packages'
 
   const PetWalkingScreen({
     super.key,
@@ -30,40 +32,20 @@ class PetWalkingScreen extends StatefulWidget {
 }
 
 class _PetWalkingScreenState extends State<PetWalkingScreen> {
-  late String _selectedCategory; // 'sitter' or 'packages'
+  late String _selectedCategory;
   bool _isLoading = true;
   String? _errorMessage;
-  String? _userProfileImageBase64;
+  List<Map<String, dynamic>> _providers = [];
 
-  List<PetWalker> _walkers = [];
+  bool get _isPackages => _selectedCategory == 'packages';
 
   @override
   void initState() {
     super.initState();
-    _fetchUserProfile();
-    _fetchPetWalkers();
-  }
-
-  Future<void> _fetchUserProfile() async {
-    if (widget.userLookup == null || widget.userLookup!.trim().isEmpty) return;
-    try {
-      final url =
-          '${ApiConfig.baseUrl}/profile?lookup=${Uri.encodeQueryComponent(widget.userLookup!.trim())}';
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 6));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) {
-          final imgStr = data['profile_image']?.toString();
-          if (imgStr != null && imgStr.isNotEmpty) {
-            setState(() {
-              _userProfileImageBase64 = imgStr;
-            });
-          }
-        }
-      }
-    } catch (_) {}
+    _selectedCategory = widget.initialCategory.toLowerCase().contains('pack')
+        ? 'packages'
+        : 'sitter';
+    _fetchProviders();
   }
 
   Future<void> _fetchProviders() async {
@@ -89,17 +71,10 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Unable to connect to PawStay. Please check your connection.';
+        _errorMessage =
+            'Unable to connect to PawStay. Please check your connection.';
       });
     }
-  }
-
-  void _switchCategory(String category) {
-    if (_selectedCategory == category) return;
-    setState(() {
-      _selectedCategory = category;
-    });
-    _fetchProviders();
   }
 
   void _openProvider(Map<String, dynamic> provider) {
@@ -117,17 +92,6 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     );
   }
 
-  List<Map<String, dynamic>> get _filteredProviders {
-    if (_searchQuery.trim().isEmpty) return _providers;
-    final query = _searchQuery.trim().toLowerCase();
-    return _providers.where((p) {
-      final name = (p['name'] ?? '').toString().toLowerCase();
-      final city = (p['city'] ?? '').toString().toLowerCase();
-      final bio = (p['bio'] ?? '').toString().toLowerCase();
-      return name.contains(query) || city.contains(query) || bio.contains(query);
-    }).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     const bg = Color(0xFFFFF9F6);
@@ -139,10 +103,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_rounded,
-            color: PawStayTheme.onSurface,
-          ),
+          icon: Icon(Icons.arrow_back_rounded, color: PawStayTheme.onSurface),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
@@ -187,7 +148,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
 
       body: RefreshIndicator(
         color: PawStayTheme.primary,
-        onRefresh: _fetchPetWalkers,
+        onRefresh: _fetchProviders,
         child: _buildBody(),
       ),
 
@@ -243,53 +204,6 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     );
   }
 
-  Widget _buildCategoryPill({
-    required String title,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? PawStayTheme.primary : const Color(0xFFF7EFE9),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: PawStayTheme.primary.withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected ? Colors.white : PawStayTheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                color: isSelected ? Colors.white : PawStayTheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildBody() {
     if (_isLoading) {
       return ListView(
@@ -311,7 +225,11 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
         padding: const EdgeInsets.all(24),
         children: [
           SizedBox(height: MediaQuery.of(context).size.height * 0.15),
-          const Icon(Icons.cloud_off_rounded, size: 54, color: PawStayTheme.primary),
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 54,
+            color: PawStayTheme.primary,
+          ),
           const SizedBox(height: 16),
           Text(
             'Something went wrong',
@@ -344,7 +262,10 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
                 backgroundColor: PawStayTheme.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -355,7 +276,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
       );
     }
 
-    final list = _filteredProviders;
+    final list = _providers;
 
     if (list.isEmpty) {
       return ListView(
@@ -389,9 +310,7 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            _searchQuery.isNotEmpty
-                ? 'No providers matched "$_searchQuery". Try searching a different city or name.'
-                : 'Check back soon as verified care providers activate their schedules.',
+            'Check back soon as verified care providers activate their schedules.',
             textAlign: TextAlign.center,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13,
@@ -439,10 +358,14 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     final city = (provider['city'] ?? '').toString().trim();
 
     final dynamic ratingRaw = provider['rating'];
-    final double? rating = ratingRaw is num ? ratingRaw.toDouble() : double.tryParse('$ratingRaw');
+    final double? rating = ratingRaw is num
+        ? ratingRaw.toDouble()
+        : double.tryParse('$ratingRaw');
 
     final dynamic reviewCountRaw = provider['review_count'];
-    final int reviewCount = reviewCountRaw is int ? reviewCountRaw : int.tryParse('$reviewCountRaw') ?? 0;
+    final int reviewCount = reviewCountRaw is int
+        ? reviewCountRaw
+        : int.tryParse('$reviewCountRaw') ?? 0;
 
     // Price display logic
     String priceText;
@@ -570,27 +493,69 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
     );
   }
 
-  Widget _buildProfileImage(PetWalker walker) {
-    if (walker.profileImage != null && walker.profileImage!.trim().isNotEmpty) {
+  Widget _buildAvatar(Map<String, dynamic> provider, String name, double size) {
+    final image = provider['profile_image']?.toString().trim();
+    if (image != null && image.isNotEmpty) {
       try {
         final bytes = base64Decode(
-          walker.profileImage!.contains(',')
-              ? walker.profileImage!.split(',').last
-              : walker.profileImage!,
+          image.contains(',') ? image.split(',').last : image,
         );
-
-        return CircleAvatar(
-          radius: 26,
-          backgroundColor: const Color(0xFFFAF0EB),
-          backgroundImage: MemoryImage(bytes),
+        return Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _initialsAvatar(name, size),
         );
       } catch (_) {}
     }
 
-    return CircleAvatar(
-      radius: 26,
-      backgroundColor: const Color(0xFFFAF0EB),
-      child: const Icon(Icons.person, color: PawStayTheme.primary, size: 26),
+    return _initialsAvatar(name, size);
+  }
+
+  Widget _initialsAvatar(String name, double size) {
+    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      color: const Color(0xFFFCEEE8),
+      child: Text(
+        initial,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: size * 0.4,
+          fontWeight: FontWeight.bold,
+          color: PawStayTheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRatingBadge(double? rating, int reviewCount) {
+    if (rating == null || reviewCount == 0) {
+      return Text(
+        'New',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: PawStayTheme.onSurfaceVariant,
+        ),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB547)),
+        const SizedBox(width: 2),
+        Text(
+          rating.toStringAsFixed(1),
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: PawStayTheme.onSurface,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -650,11 +615,15 @@ class PetWalker {
       profileImage: json['profile_image']?.toString(),
       distance: (json['distance'] ?? '2 miles away').toString(),
       serviceLabel: (json['service'] ?? 'Pet Care').toString(),
-      walkingCharge: _toNullableInt(json['sitter_price'] ?? json['walking_charge']),
+      walkingCharge: _toNullableInt(
+        json['sitter_price'] ?? json['walking_charge'],
+      ),
       daycareCharge: _toNullableInt(json['daycare_charge']),
       daycareFoodCharge: _toNullableInt(json['daycare_food_charge']),
-      providerDescription: (json['bio'] ?? json['provider_description'])?.toString(),
-      averageRating: (json['rating'] ?? json['average_rating'] as num?)?.toDouble() ?? 0,
+      providerDescription: (json['bio'] ?? json['provider_description'])
+          ?.toString(),
+      averageRating:
+          (json['rating'] ?? json['average_rating'] as num?)?.toDouble() ?? 0,
       reviewCount: _toInt(json['review_count']),
     );
   }
