@@ -11,6 +11,7 @@ echo   [8002] Provider API   -^> backend\service_provider\main.py
 echo   [8003] Seller API     -^> backend\seller\main.py
 echo   [8004] Payment API    -^> backend\payment\main.py
 echo   [8005] Admin API      -^> backend\admin\main.py
+echo   [8006] AI Assistant  -^> backend\AI Agent\main.py
 echo.
 
 REM Resolve backend directory relative to this .bat file
@@ -27,11 +28,14 @@ if not exist "%BACKEND_DIR%venv\Scripts\python.exe" (
 if not exist "%BACKEND_DIR%.env" (
     echo WARNING: backend\.env was not found. Razorpay checkout will be unavailable
     echo until RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are configured there.
+    echo The AI assistant also needs an NVIDIA or Hugging Face token in backend\.env.
 ) else (
     findstr /r /c:"^[ ]*RAZORPAY_KEY_ID[ ]*=" /c:"^[ ]*RAZORPAY_API_KEY[ ]*=" "%BACKEND_DIR%.env" >nul
     if errorlevel 1 echo WARNING: backend\.env has no Razorpay key ID configured.
     findstr /r /c:"^[ ]*RAZORPAY_KEY_SECRET[ ]*=" "%BACKEND_DIR%.env" >nul
     if errorlevel 1 echo WARNING: backend\.env has no Razorpay key secret configured.
+    findstr /r /c:"^[ ]*NVDIA_API_Model1[ ]*=" /c:"^[ ]*NVDIA_API_Model2[ ]*=" /c:"^[ ]*NVDIA_API_Model3[ ]*=" /c:"^[ ]*NVDIA_API_Model4[ ]*=" /c:"^[ ]*NVIDIA_API_KEY[ ]*=" /c:"^[ ]*NVIDIA_API_MODEL1[ ]*=" /c:"^[ ]*NVIDIA_API_MODEL2[ ]*=" /c:"^[ ]*NVIDIA_API_MODEL3[ ]*=" /c:"^[ ]*NVIDIA_API_MODEL4[ ]*=" /c:"^[ ]*HF_TOKEN[ ]*=" /c:"^[ ]*HUGGINGFACE_API_KEY[ ]*=" /c:"^[ ]*HUGGINGFACEHUB_API_TOKEN[ ]*=" "%BACKEND_DIR%.env" >nul
+    if errorlevel 1 echo WARNING: backend\.env has no NVIDIA or Hugging Face API key configured; AI chat will be unavailable.
 )
 echo.
 echo For a physical Android phone, keep it on the same Wi-Fi as this computer.
@@ -63,14 +67,18 @@ start "PawStay Payment API [8004]" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Sc
 REM ── Service 6: Admin API (port 8005) ──────────────────────────────────────
 start "PawStay Admin API [8005]" cmd /k "cd /d ""%BACKEND_DIR%"" && call ""%BACKEND_DIR%venv\Scripts\activate.bat"" && python -m admin.main"
 
+REM AI Assistant (port 8006)
+start "PawStay AI Assistant [8006]" cmd /k "cd /d ""%BACKEND_DIR%AI Agent"" && call ""%BACKEND_DIR%venv\Scripts\activate.bat"" && python main.py"
+
 echo.
-echo All 6 services launched in separate windows.
+echo All 7 services launched in separate windows.
 echo   Main API      : http://localhost:8000
 echo   Message Service: http://localhost:8001
 echo   Provider API  : http://localhost:8002
 echo   Seller API    : http://localhost:8003
 echo   Payment API   : http://localhost:8004
 echo   Admin API     : http://localhost:8005
+echo   AI Assistant : http://localhost:8006
 echo.
 echo Close those windows to stop the services.
 pause

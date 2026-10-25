@@ -13,6 +13,7 @@ import 'provider_bookings.dart';
 import 'provider_profile_screen.dart';
 import 'slide_bar.dart';
 import 'your_rating.dart';
+import 'AI.dart';
 import '../../widgets/animated_ai_nav_icon.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
@@ -325,7 +326,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
             profileImage: _profileImageBase64,
             onRatingTap: _showRatingSummary,
           ),
-          appBar: (_currentNavIndex == 1 || _currentNavIndex == 2)
+          appBar:
+              (_currentNavIndex == 1 ||
+                  _currentNavIndex == 2 ||
+                  _currentNavIndex == 3)
               ? null
               : AppBar(
                   backgroundColor: PawStayTheme.background,
@@ -376,7 +380,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
                       alignment: Alignment.center,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.notifications_outlined, size: 24),
+                          icon: const Icon(
+                            Icons.notifications_outlined,
+                            size: 24,
+                          ),
                           color: PawStayTheme.onSurface,
                           onPressed: _openNotificationsSheet,
                         ),
@@ -390,9 +397,14 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
                                 color: Color(0xFFC62828),
                                 shape: BoxShape.circle,
                               ),
-                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
                               child: Text(
-                                _unreadNotificationCount > 9 ? '9+' : '$_unreadNotificationCount',
+                                _unreadNotificationCount > 9
+                                    ? '9+'
+                                    : '$_unreadNotificationCount',
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.plusJakartaSans(
                                   color: Colors.white,
@@ -444,7 +456,9 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
                       isProvider: true,
                     )
                   : const SizedBox.shrink(),
-              const Center(child: Text('AI Assistant coming soon')),
+              _loadedNavTabs.contains(3)
+                  ? AI(providerLookup: widget.providerLookup)
+                  : const SizedBox.shrink(),
             ],
           ),
           bottomNavigationBar: Container(
@@ -498,18 +512,6 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
                   _currentNavIndex = index;
                   _loadedNavTabs.add(index);
                 });
-                if (index == 3) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Coming soon: Chat with AI Assistant',
-                        style: GoogleFonts.plusJakartaSans(color: Colors.white),
-                      ),
-                      backgroundColor: PawStayTheme.primary,
-                      duration: const Duration(milliseconds: 900),
-                    ),
-                  );
-                }
               },
             ),
           ),
@@ -751,7 +753,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
                   style: TextButton.styleFrom(
                     backgroundColor: PawStayTheme.primary,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1211,10 +1216,12 @@ class _ProviderNotificationsModal extends StatefulWidget {
   });
 
   @override
-  State<_ProviderNotificationsModal> createState() => _ProviderNotificationsModalState();
+  State<_ProviderNotificationsModal> createState() =>
+      _ProviderNotificationsModalState();
 }
 
-class _ProviderNotificationsModalState extends State<_ProviderNotificationsModal> {
+class _ProviderNotificationsModalState
+    extends State<_ProviderNotificationsModal> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _notifications = [];
 
@@ -1282,7 +1289,20 @@ class _ProviderNotificationsModalState extends State<_ProviderNotificationsModal
     if (dtStr == null) return '';
     try {
       final dt = DateTime.parse(dtStr);
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       final month = months[dt.month - 1];
       final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
       final minute = dt.minute.toString().padLeft(2, '0');
@@ -1343,116 +1363,118 @@ class _ProviderNotificationsModalState extends State<_ProviderNotificationsModal
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: PawStayTheme.primary),
+                    child: CircularProgressIndicator(
+                      color: PawStayTheme.primary,
+                    ),
                   )
                 : _notifications.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.notifications_none_rounded,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No notifications yet',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 15,
+                            color: PawStayTheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _notifications.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final item = _notifications[index];
+                      final isUnread = item['is_read'] != true;
+                      final title = item['title']?.toString() ?? 'Notification';
+                      final message = item['message']?.toString() ?? '';
+                      final time = _formatTime(item['created_at']?.toString());
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isUnread
+                                ? PawStayTheme.primary.withValues(alpha: 0.15)
+                                : const Color(0xFFF5EBE6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.calendar_today_rounded,
+                            size: 20,
+                            color: isUnread
+                                ? PawStayTheme.primary
+                                : Colors.grey.shade600,
+                          ),
+                        ),
+                        title: Row(
                           children: [
-                            Icon(
-                              Icons.notifications_none_rounded,
-                              size: 48,
-                              color: Colors.grey.shade400,
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 14,
+                                  fontWeight: isUnread
+                                      ? FontWeight.bold
+                                      : FontWeight.w600,
+                                  color: PawStayTheme.onSurface,
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 12),
+                            if (isUnread)
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: PawStayTheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 2),
                             Text(
-                              'No notifications yet',
+                              message,
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 15,
+                                fontSize: 13,
                                 color: PawStayTheme.onSurfaceVariant,
                               ),
                             ),
+                            if (time.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                time,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
-                      )
-                    : ListView.separated(
-                        itemCount: _notifications.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final item = _notifications[index];
-                          final isUnread = item['is_read'] != true;
-                          final title = item['title']?.toString() ?? 'Notification';
-                          final message = item['message']?.toString() ?? '';
-                          final time = _formatTime(item['created_at']?.toString());
-
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: isUnread
-                                    ? PawStayTheme.primary.withValues(alpha: 0.15)
-                                    : const Color(0xFFF5EBE6),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.calendar_today_rounded,
-                                size: 20,
-                                color: isUnread
-                                    ? PawStayTheme.primary
-                                    : Colors.grey.shade600,
-                              ),
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 14,
-                                      fontWeight: isUnread
-                                          ? FontWeight.bold
-                                          : FontWeight.w600,
-                                      color: PawStayTheme.onSurface,
-                                    ),
-                                  ),
-                                ),
-                                if (isUnread)
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: PawStayTheme.primary,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 2),
-                                Text(
-                                  message,
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 13,
-                                    color: PawStayTheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (time.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    time,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade500,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            onTap: () => _onItemTapped(item),
-                          );
-                        },
-                      ),
+                        onTap: () => _onItemTapped(item),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
 }
-

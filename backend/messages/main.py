@@ -329,17 +329,25 @@ def create_or_get_conversation(payload: ConversationCreate):
     """
     Find existing conversation or create a new one in chats.json with alias matching
     """
-    allowed_contact_roles = {"pet service", "service provider"}
+    provider_roles = {"pet service", "service provider"}
+    user_role = (get_user_role(payload.user_id) or "").strip().lower()
     contact_role = get_user_role(payload.contact_id)
-    if contact_role is None or contact_role.strip().lower() not in allowed_contact_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can contact only service providers.",
-        )
-    if (get_user_role(payload.user_id) or "").strip().lower() == "seller":
+    contact_role_clean = (contact_role or "").strip().lower()
+
+    if user_role == "seller":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Seller accounts cannot start chats with marketplace users.",
+        )
+
+    # Customers can start chats with providers, and providers can reply to
+    # their booking clients.  Seller conversations remain unavailable.
+    if contact_role_clean == "seller" or (
+        user_role not in provider_roles and contact_role_clean not in provider_roles
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can contact only service providers.",
         )
 
     chats = load_chats_data()

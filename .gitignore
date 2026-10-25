@@ -53,8 +53,14 @@ venv/
 build/
 build_old/
 web/
-animated_svg.html
+
 Maps_Data/
 # Widget Preview related
 .widget_preview/
 devtools_options.yaml
+
+# AI assistant conversations contain user messages and must stay local.
+backend/AI Agent/assistant.db
+backend/AI Agent/assistant.db-shm
+backend/AI Agent/assistant.db-wal
+backend/AI Agent/assistant.db-journal

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -36,14 +37,14 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   List<Map<String, dynamic>> _providers = [];
+  final Map<String, Uint8List?> _avatarBytesCache = {};
 
   bool get _isPackages => _selectedCategory == 'packages';
 
   @override
   void initState() {
     super.initState();
-    final lower = widget.initialCategory.toLowerCase();
-    _selectedCategory = lower.contains('pack') ? 'packages' : 'sitter';
+    _selectedCategory = 'sitter';
     _fetchProviders();
   }
 
@@ -180,24 +181,15 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
             padding: const EdgeInsets.fromLTRB(18, 4, 18, 14),
             child: Column(
               children: [
-                // Category Pills (Pet Sitter & Packages)
+                // Category Pill
                 Row(
                   children: [
                     Expanded(
                       child: _buildCategoryPill(
                         title: 'Pet Sitter',
                         icon: Icons.pets_rounded,
-                        isSelected: !_isPackages,
+                        isSelected: true,
                         onTap: () => _switchCategory('sitter'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildCategoryPill(
-                        title: 'Packages',
-                        icon: Icons.inventory_2_rounded,
-                        isSelected: _isPackages,
-                        onTap: () => _switchCategory('packages'),
                       ),
                     ),
                   ],
@@ -690,17 +682,24 @@ class _PetWalkingScreenState extends State<PetWalkingScreen> {
   Widget _buildAvatar(Map<String, dynamic> provider, String name, double size) {
     final img = provider['profile_image']?.toString();
     if (img != null && img.trim().isNotEmpty) {
-      try {
-        final raw = img.trim();
-        final bytes = base64Decode(raw.contains(',') ? raw.split(',').last : raw);
+      final raw = img.trim();
+      final bytes = _avatarBytesCache.putIfAbsent(raw, () {
+        try {
+          return base64Decode(raw.contains(',') ? raw.split(',').last : raw);
+        } catch (_) {
+          return null;
+        }
+      });
+      if (bytes != null) {
         return Image.memory(
           bytes,
           width: size,
           height: size,
+          cacheWidth: (size * 2).round(),
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => _initialsAvatar(name, size),
         );
-      } catch (_) {}
+      }
     }
     return _initialsAvatar(name, size);
   }

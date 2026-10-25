@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class ProfileAvatar extends StatelessWidget {
+class ProfileAvatar extends StatefulWidget {
   final String name;
   final String? imageValue;
   final double radius;
@@ -20,46 +20,73 @@ class ProfileAvatar extends StatelessWidget {
     this.initialColor = const Color(0xFFCA6347),
   });
 
-  Uint8List? _decodeImage(String value) {
+  @override
+  State<ProfileAvatar> createState() => _ProfileAvatarState();
+}
+
+class _ProfileAvatarState extends State<ProfileAvatar> {
+  String? _decodedValue;
+  Uint8List? _imageBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheImageBytes();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageValue != widget.imageValue) {
+      _cacheImageBytes();
+    }
+  }
+
+  void _cacheImageBytes() {
+    final value = widget.imageValue?.trim();
+    _decodedValue = value;
+    if (value == null || value.isEmpty || value.startsWith('http')) {
+      _imageBytes = null;
+      return;
+    }
     try {
       final encoded = value.contains(',') ? value.split(',').last : value;
-      return base64Decode(encoded);
+      _imageBytes = base64Decode(encoded);
     } catch (_) {
-      return null;
+      _imageBytes = null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final value = imageValue?.trim();
-    final imageBytes =
-        value == null || value.isEmpty || value.startsWith('http')
-        ? null
-        : _decodeImage(value);
-    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+    final value = _decodedValue;
+    final initial = widget.name.trim().isNotEmpty
+        ? widget.name.trim()[0].toUpperCase()
+        : '?';
 
     Widget fallback() => CircleAvatar(
-      radius: radius,
-      backgroundColor: fallbackColor,
+      radius: widget.radius,
+      backgroundColor: widget.fallbackColor,
       child: Text(
         initial,
         style: GoogleFonts.plusJakartaSans(
-          fontSize: radius * 0.72,
+          fontSize: widget.radius * 0.72,
           fontWeight: FontWeight.bold,
-          color: initialColor,
+          color: widget.initialColor,
         ),
       ),
     );
 
-    if (imageBytes != null) {
+    if (_imageBytes != null) {
       return CircleAvatar(
-        radius: radius,
-        backgroundColor: fallbackColor,
+        radius: widget.radius,
+        backgroundColor: widget.fallbackColor,
         child: ClipOval(
           child: Image.memory(
-            imageBytes,
-            width: radius * 2,
-            height: radius * 2,
+            _imageBytes!,
+            width: widget.radius * 2,
+            height: widget.radius * 2,
+            cacheWidth: (widget.radius * 2).round(),
             fit: BoxFit.cover,
             errorBuilder: (context, error, _) => fallback(),
           ),
@@ -69,8 +96,8 @@ class ProfileAvatar extends StatelessWidget {
 
     if (value != null && value.isNotEmpty) {
       return CircleAvatar(
-        radius: radius,
-        backgroundColor: fallbackColor,
+        radius: widget.radius,
+        backgroundColor: widget.fallbackColor,
         backgroundImage: NetworkImage(value),
         onBackgroundImageError: (exception, _) {},
       );

@@ -45,7 +45,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _initializeChat() async {
-    await _loadClearMarker();
+    try {
+      await _loadClearMarker();
+    } catch (error) {
+      // Local display state must not prevent messages from loading.
+      debugPrint('[CHAT] Could not load clear marker: $error');
+    }
     await _fetchMessages();
   }
 

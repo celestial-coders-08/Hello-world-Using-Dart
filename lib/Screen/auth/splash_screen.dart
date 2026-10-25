@@ -127,7 +127,17 @@ class _SplashScreenState extends State<SplashScreen>
     // Navigate after splash hold
     await Future.delayed(const Duration(milliseconds: 1400));
     if (mounted) {
-      final destination = await _savedLoginDestination();
+      // Startup storage is platform-backed.  Never let a failed or stalled
+      // read keep a release build on the splash screen indefinitely.
+      Widget destination = const LoginScreen();
+      try {
+        destination = await _savedLoginDestination().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => const LoginScreen(),
+        );
+      } catch (_) {
+        // An unavailable saved session safely falls back to the login screen.
+      }
       if (!mounted) return;
       Navigator.pushReplacement(
         context,

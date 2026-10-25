@@ -22,7 +22,7 @@
       "contact_id": "hello",
       "contact_name": "varad",
       "contact_avatar_url": null,
-      "updated_at": "2026-10-20T12:03:17.144208"
+      "updated_at": "2026-10-24T09:05:28.434499"
     },
     {
       "id": 4,
@@ -341,6 +341,33 @@
       "sender_id": "varad7611@gmail.com",
       "content": "Hi",
       "timestamp": "2026-10-20T12:03:17.144208",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 35,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-10-24T08:06:02.037042",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 36,
+      "conversation_id": 3,
+      "sender_id": "internshipwerbung@gmail.com",
+      "content": "hello",
+      "timestamp": "2026-10-24T08:06:08.380297",
+      "is_read": true,
+      "image_url": null
+    },
+    {
+      "id": 37,
+      "conversation_id": 3,
+      "sender_id": "varad7611@gmail.com",
+      "content": "Hi",
+      "timestamp": "2026-10-24T09:05:28.434499",
       "is_read": false,
       "image_url": null
     }

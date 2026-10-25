@@ -6,7 +6,9 @@ import 'Screen/auth/splash_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await dotenv.load(fileName: ".env");
+    await dotenv
+        .load(fileName: ".env")
+        .timeout(const Duration(seconds: 3));
   } catch (_) {}
   runApp(const MyApp());
 }

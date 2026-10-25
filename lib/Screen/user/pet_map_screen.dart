@@ -1045,6 +1045,26 @@ class _PetMapScreenState extends State<PetMapScreen>
       )
       .toList();
 
+  _PetService? get _nearestService {
+    final position = _currentPosition;
+    if (position == null || _visibleServices.isEmpty) return null;
+    return _visibleServices.reduce(
+      (nearest, service) =>
+          _distanceToService(service, position) <
+              _distanceToService(nearest, position)
+          ? service
+          : nearest,
+    );
+  }
+
+  double _distanceToService(_PetService service, LatLng position) =>
+      Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        service.position.latitude,
+        service.position.longitude,
+      );
+
   _RouteInstruction? get _currentInstruction =>
       _routeInstructions.isEmpty ||
           _currentInstructionIndex >= _routeInstructions.length
@@ -1670,6 +1690,8 @@ class _PetMapScreenState extends State<PetMapScreen>
 
   Widget _buildNearbySummary(ColorScheme colors) {
     final count = _visibleServices.length;
+    final position = _currentPosition;
+    final nearest = _nearestService;
     return Row(
       children: [
         Container(
@@ -1702,7 +1724,12 @@ class _PetMapScreenState extends State<PetMapScreen>
               Text(
                 _locationError.isNotEmpty
                     ? _locationError
-                    : 'Pins use the saved latitude and longitude coordinates.',
+                    : position == null
+                    ? 'Allow location access to find the nearest mapped service.'
+                    : nearest == null
+                    ? 'No mapped services in this category.'
+                    : 'Nearest: ${nearest.name} · '
+                          '${_formatDistance(_distanceToService(nearest, position))} away.',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(

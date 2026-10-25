@@ -389,6 +389,8 @@ class MessageResponse(BaseModel):
     success: bool
     message: str
     access_token: str | None = None
+    role: str | None = None
+    lookup: str | None = None
 
 
 class PetCreateRequest(BaseModel):
@@ -522,6 +524,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             success=True,
             message="Login successful! Welcome back, Admin.",
             access_token=issue_access_token(999999, admin_email),
+            role="Admin",
+            lookup=admin_email,
         )
 
     user = get_user_by_lookup(db, identifier)
@@ -542,6 +546,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         success=True,
         message=f"Login successful! Welcome back, {user.full_name}.",
         access_token=issue_access_token(user.id, user.email),
+        role=user.role,
+        lookup=user.email,
     )
 
 

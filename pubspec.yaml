@@ -44,7 +44,7 @@ dependencies:
   firebase_database: ^12.4.7
   flutter_dotenv: ^6.0.1
   socket_io_client: ^2.0.3
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.5.6
   gal: ^2.3.3
   camera: ^0.12.1
   google_mlkit_face_detection: ^0.15.1
@@ -58,6 +58,12 @@ dev_dependencies:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
   flutter_lints: ^6.0.0
+
+# shared_preferences_android 2.5.x uses a generated Pigeon bridge that can
+# fail in this project's release APK with a missing getAll method. Pin the
+# compatible Android implementation until the native build is upgraded.
+dependency_overrides:
+  shared_preferences_android: 2.4.28
 
 flutter_launcher_icons:
   android: true

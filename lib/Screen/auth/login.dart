@@ -105,30 +105,24 @@ class _LoginScreenState extends State<LoginScreen>
           );
           return;
         }
-        final preferences = await SharedPreferences.getInstance();
-        await preferences.setString('access_token', accessToken);
         _showSnack(decoded['message'] ?? 'Login successful!');
-        String? role;
-        final profileResponse = await http
-            .get(
-              Uri.parse(
-                '${ApiConfig.baseUrl}/profile',
-              ).replace(queryParameters: {'lookup': lookup}),
-              headers: {'Accept': 'application/json'},
-            )
-            .timeout(const Duration(seconds: 10));
-
-        if (profileResponse.statusCode != 200) {
-          _showSnack(
-            'Could not load your account role. Please try again.',
-            isError: true,
+        final role = decoded['role']?.toString();
+        final sessionLookup = decoded['lookup']?.toString().trim();
+        // A successful login must not be blocked by a device storage failure.
+        // Session storage is restored on the next launch when available.
+        try {
+          final preferences = await SharedPreferences.getInstance();
+          await preferences.setString('access_token', accessToken);
+          await preferences.setString(
+            'session_lookup',
+            sessionLookup == null || sessionLookup.isEmpty
+                ? lookup
+                : sessionLookup,
           );
-          return;
+          await preferences.setString('session_role', role ?? 'User');
+        } catch (error) {
+          debugPrint('[LOGIN] Could not persist session: $error');
         }
-        final profile = jsonDecode(profileResponse.body);
-        role = profile['role']?.toString();
-        await preferences.setString('session_lookup', lookup);
-        await preferences.setString('session_role', role ?? 'User');
         if (!mounted) return;
 
         final isAdmin =

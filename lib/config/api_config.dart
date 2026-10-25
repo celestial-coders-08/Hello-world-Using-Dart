@@ -12,6 +12,7 @@ class ApiConfig {
   static const int sellerPort = 8003;
   static const int paymentPort = 8004;
   static const int adminPort = 8005;
+  static const int aiPort = 8006;
 
   /// ── IMPORTANT ─────────────────────────────────────────────────────────────
   /// Fallback laptop LAN IP for a physical Android device. Override at build/run
@@ -19,7 +20,7 @@ class ApiConfig {
   /// ──────────────────────────────────────────────────────────────────────────
   static const String deviceIp = String.fromEnvironment(
     'PAWSTAY_API_HOST',
-    defaultValue: '192.168.1.9',
+    defaultValue: '192.168.1.101',
   );
   static const String androidHost = deviceIp;
 
@@ -89,5 +90,16 @@ class ApiConfig {
       return 'http://$androidHost:$adminPort';
     }
     return 'http://127.0.0.1:$adminPort';
+  }
+
+  /// URL for the role-aware PawStay AI assistant service.
+  static String get aiBaseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:$aiPort';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://$androidHost:$aiPort';
+    }
+    return 'http://127.0.0.1:$aiPort';
   }
 }

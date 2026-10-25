@@ -1,0 +1,215 @@
+<!DOCTYPE html><html lang="en" style="background: transparent; opacity: 1;" data-stitch-anim-opacity="true"><head>
+<meta charset="utf-8">
+<meta content="width=device-width,initial-scale=1.0" name="viewport">
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+  </style>
+</head>
+<body style="background: transparent;">
+<!-- STITCH_SVG_START:ANIMATION_63 class="fixed inset-0 w-full h-full" --><div class="fixed inset-0 w-full h-full" id="animated-svg-ANIMATION_63" style="display:block;"><svg height="100%" viewBox="0 0 120 120" width="100%" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<style>
+      /* Main bottom-to-up continuous floating wave with pulse */
+      @keyframes floatUpWave {
+        0% {
+          transform: translateY(22px) scale(0.85);
+          opacity: 0.15;
+          filter: drop-shadow(0 0 2px rgba(96, 165, 250, 0.4));
+        }
+        25% {
+          opacity: 0.9;
+          filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.8)) drop-shadow(0 0 24px rgba(96, 165, 250, 0.6));
+        }
+        50% {
+          transform: translateY(0px) scale(1.08) rotate(6deg);
+          opacity: 1;
+          filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 30px rgba(244, 114, 182, 0.7));
+        }
+        75% {
+          opacity: 0.85;
+          filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.7));
+        }
+        100% {
+          transform: translateY(-24px) scale(0.85) rotate(-6deg);
+          opacity: 0.1;
+          filter: drop-shadow(0 0 4px rgba(244, 114, 182, 0.3));
+        }
+      }
+
+      /* Secondary stars staggered upward drift */
+      @keyframes subStar1Float {
+        0% {
+          transform: translateY(26px) scale(0.7) rotate(0deg);
+          opacity: 0.1;
+        }
+        30% {
+          opacity: 0.95;
+          filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.9));
+        }
+        55% {
+          transform: translateY(-2px) scale(1.15) rotate(15deg);
+          opacity: 1;
+          filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.8));
+        }
+        80% {
+          opacity: 0.6;
+        }
+        100% {
+          transform: translateY(-28px) scale(0.65) rotate(30deg);
+          opacity: 0.1;
+        }
+      }
+
+      @keyframes subStar2Float {
+        0% {
+          transform: translateY(28px) scale(0.75) rotate(0deg);
+          opacity: 0.1;
+        }
+        35% {
+          opacity: 0.95;
+          filter: drop-shadow(0 0 12px rgba(244, 114, 182, 0.9));
+        }
+        60% {
+          transform: translateY(2px) scale(1.2) rotate(-15deg);
+          opacity: 1;
+          filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.85));
+        }
+        85% {
+          opacity: 0.55;
+        }
+        100% {
+          transform: translateY(-26px) scale(0.7) rotate(-30deg);
+          opacity: 0.1;
+        }
+      }
+
+      /* Floating ambient background orbs */
+      @keyframes upwardOrbs {
+        0% {
+          transform: translateY(30px) scale(0.8);
+          opacity: 0.2;
+        }
+        50% {
+          transform: translateY(0px) scale(1.2);
+          opacity: 0.65;
+        }
+        100% {
+          transform: translateY(-30px) scale(0.8);
+          opacity: 0.2;
+        }
+      }
+
+      /* Rising micro sparkles */
+      @keyframes particleFloat1 {
+        0% { transform: translate(30px, 95px) scale(0); opacity: 0; }
+        30% { opacity: 0.9; }
+        80% { opacity: 0.7; }
+        100% { transform: translate(36px, 15px) scale(1.2); opacity: 0; }
+      }
+      @keyframes particleFloat2 {
+        0% { transform: translate(75px, 105px) scale(0); opacity: 0; }
+        40% { opacity: 1; }
+        85% { opacity: 0.8; }
+        100% { transform: translate(70px, 20px) scale(1.4); opacity: 0; }
+      }
+      @keyframes particleFloat3 {
+        0% { transform: translate(98px, 90px) scale(0); opacity: 0; }
+        35% { opacity: 0.85; }
+        75% { opacity: 0.6; }
+        100% { transform: translate(92px, 25px) scale(1); opacity: 0; }
+      }
+
+      .star-main {
+        transform-origin: 46px 60px;
+        animation: floatUpWave 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      .star-top {
+        transform-origin: 82px 28px;
+        animation: subStar1Float 4s cubic-bezier(0.4, 0, 0.2, 1) 0.4s infinite;
+      }
+
+      .star-bottom {
+        transform-origin: 84px 84px;
+        animation: subStar2Float 4s cubic-bezier(0.4, 0, 0.2, 1) 0.8s infinite;
+      }
+
+      .glow-aura {
+        transform-origin: 60px 60px;
+        animation: upwardOrbs 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      .particle-1 { animation: particleFloat1 3.5s ease-in-out infinite; }
+      .particle-2 { animation: particleFloat2 3.8s ease-in-out 1.2s infinite; }
+      .particle-3 { animation: particleFloat3 4.2s ease-in-out 0.6s infinite; }
+    </style>
+<!-- Vivid Blue, Pink & White Cosmic Radial and Linear Gradients -->
+<radialGradient cx="50%" cy="50%" id="electricAura" r="50%">
+<stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"></stop>
+<stop offset="35%" stop-color="#ec4899" stop-opacity="0.6"></stop>
+<stop offset="70%" stop-color="#3b82f6" stop-opacity="0.35"></stop>
+<stop offset="100%" stop-color="#1e1b4b" stop-opacity="0"></stop>
+</radialGradient>
+<!-- Neon Pink to Electric Blue Gradient for Stars -->
+<linearGradient id="bluePinkGrad" x1="0%" x2="100%" y1="100%" y2="0%">
+<stop offset="0%" stop-color="#2563eb"></stop>
+<stop offset="45%" stop-color="#8b5cf6"></stop>
+<stop offset="85%" stop-color="#ec4899"></stop>
+<stop offset="100%" stop-color="#f472b6"></stop>
+</linearGradient>
+<!-- Reverse Gradient for Harmony -->
+<linearGradient id="pinkBlueGrad" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#f43f5e"></stop>
+<stop offset="50%" stop-color="#d946ef"></stop>
+<stop offset="100%" stop-color="#38bdf8"></stop>
+</linearGradient>
+<!-- Pure Brilliant White & Soft Cyan/Rose Highlight -->
+<linearGradient id="pureWhiteShine" x1="0%" x2="100%" y1="100%" y2="0%">
+<stop offset="0%" stop-color="#ffffff"></stop>
+<stop offset="60%" stop-color="#fdf2f8"></stop>
+<stop offset="100%" stop-color="#e0f2fe"></stop>
+</linearGradient>
+</defs>
+<!-- Glowing Backdrop with Pulse & Motion -->
+<circle class="glow-aura" cx="60" cy="60" fill="url(#electricAura)" r="50"></circle>
+<!-- Upward Rising Micro Sparkles -->
+<circle class="particle-1" cx="0" cy="0" fill="#ffffff" r="2.2"></circle>
+<circle class="particle-2" cx="0" cy="0" fill="#f472b6" r="2.8"></circle>
+<circle class="particle-3" cx="0" cy="0" fill="#60a5fa" r="2"></circle>
+<!-- Main Primary Sparkle Star (Bottom to Up Floating Motion) -->
+<g class="star-main">
+<!-- Star Outer Glow Body -->
+<path d="M 46,20 C 46,42 24,60 14,60 C 24,60 46,78 46,100 C 46,78 68,60 78,60 C 68,60 46,42 46,20 Z" fill="url(#bluePinkGrad)"></path>
+<!-- White Core Diamond Highlight -->
+<path d="M 46,32 C 46,48 33,60 25,60 C 33,60 46,72 46,88 C 46,72 59,60 67,60 C 59,60 46,48 46,32 Z" fill="url(#pureWhiteShine)" opacity="0.95"></path>
+<!-- Central Bright White Centerpoint -->
+<circle cx="46" cy="60" fill="#ffffff" r="4"></circle>
+</g>
+<!-- Top-Right Secondary Sparkle -->
+<g class="star-top">
+<!-- Star Body -->
+<path d="M 82,10 C 82,20 72,28 67,28 C 72,28 82,36 82,46 C 82,36 92,28 97,28 C 92,28 82,20 82,10 Z" fill="url(#pinkBlueGrad)"></path>
+<!-- Inner Highlight -->
+<path d="M 82,17 C 82,23 77,28 74,28 C 77,28 82,33 82,39 C 82,33 87,28 90,28 C 87,28 82,23 82,17 Z" fill="url(#pureWhiteShine)" opacity="0.95"></path>
+<circle cx="82" cy="28" fill="#ffffff" r="2.5"></circle>
+</g>
+<!-- Bottom-Right Tertiary Sparkle -->
+<g class="star-bottom">
+<!-- Star Body -->
+<path d="M 84,66 C 84,76 74,84 69,84 C 74,84 84,92 84,102 C 84,92 94,84 99,84 C 94,84 84,76 84,66 Z" fill="url(#bluePinkGrad)"></path>
+<!-- Inner Highlight -->
+<path d="M 84,73 C 84,79 79,84 76,84 C 79,84 84,89 84,95 C 84,89 89,84 92,84 C 89,84 84,79 84,73 Z" fill="url(#pureWhiteShine)" opacity="0.95"></path>
+<circle cx="84" cy="84" fill="#ffffff" r="2.5"></circle>
+</g>
+</svg></div><!-- STITCH_SVG_END:ANIMATION_63 -->
+
+
+
+
+</body></html>
