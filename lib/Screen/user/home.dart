@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
-import '../../services/api_service.dart';
 import '../../theme/pawstay_theme.dart';
 import 'profile_screen.dart';
 import 'add_pet_screen.dart';
@@ -14,7 +13,7 @@ import 'pet_walking_screen.dart';
 import 'shop_screen.dart';
 import 'doctor_screen.dart';
 import 'food_screen.dart';
-import 'AI.dart';
+import 'ai.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/animated_ai_nav_icon.dart';
 import '../../models/pet_storage.dart';
@@ -52,38 +51,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchUserProfile();
     _fetchPets();
     _loadSavedPet();
-    _fetchCustomerNotificationsCount();
-  }
-
-  int _customerUnreadNotifications = 0;
-
-  Future<void> _fetchCustomerNotificationsCount() async {
-    final lookup = widget.userLookup?.trim();
-    if (lookup == null || lookup.isEmpty) return;
-    final count = await ApiService.fetchUnreadNotificationsCount(
-      recipientId: lookup,
-      role: 'customer',
-    );
-    if (mounted) {
-      setState(() => _customerUnreadNotifications = count);
-    }
-  }
-
-  void _openCustomerNotificationsSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => _CustomerNotificationsModal(
-        customerLookup: widget.userLookup,
-        onNotificationRead: () {
-          _fetchCustomerNotificationsCount();
-        },
-      ),
-    ).then((_) => _fetchCustomerNotificationsCount());
   }
 
   @override

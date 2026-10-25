@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,11 +8,10 @@ import '../user/pet_map_screen.dart';
 import '../user/shop_screen.dart';
 import 'analysis.dart';
 import 'doctor.dart';
-import 'provider_bookings.dart';
 import 'provider_profile_screen.dart';
 import 'slide_bar.dart';
 import 'your_rating.dart';
-import 'AI.dart';
+import 'ai.dart';
 import '../../widgets/animated_ai_nav_icon.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
@@ -26,17 +24,12 @@ class ProviderDashboardScreen extends StatefulWidget {
       _ProviderDashboardScreenState();
 }
 
-class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
-    with WidgetsBindingObserver {
+class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   int _currentNavIndex = 0;
   final Set<int> _loadedNavTabs = {0};
   String _displayName = 'Service Provider';
   String? _profileImageBase64;
   bool _isProfileComplete = false;
-  int _unreadNotificationCount = 0;
-  int _pendingRequestsCount = 0;
-  Timer? _notificationPollTimer;
-
   double _mapZoom = 1.0;
 
   String get _greeting {
@@ -49,76 +42,14 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     PawStayTheme.enterProviderLightMode();
     _checkProfileStatusAndPrompt();
-    _fetchNotificationCount();
-    _fetchPendingRequestsCount();
-    _notificationPollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _fetchNotificationCount();
-      _fetchPendingRequestsCount();
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _fetchNotificationCount();
-      _fetchPendingRequestsCount();
-    }
   }
 
   @override
   void dispose() {
-    _notificationPollTimer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
     PawStayTheme.exitProviderLightMode();
     super.dispose();
-  }
-
-  Future<void> _fetchNotificationCount() async {
-    final lookup = widget.providerLookup?.trim();
-    if (lookup == null || lookup.isEmpty) return;
-    final count = await ApiService.fetchUnreadNotificationsCount(
-      recipientId: lookup,
-      role: 'provider',
-    );
-    if (mounted) {
-      setState(() => _unreadNotificationCount = count);
-    }
-  }
-
-  Future<void> _fetchPendingRequestsCount() async {
-    final lookup = widget.providerLookup?.trim();
-    if (lookup == null || lookup.isEmpty) return;
-    final bookings = await ApiService.fetchProviderBookings(
-      providerLookup: lookup,
-      statusFilter: 'pending',
-    );
-    if (mounted) {
-      setState(() => _pendingRequestsCount = bookings.length);
-    }
-  }
-
-  void _openNotificationsSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => _ProviderNotificationsModal(
-        providerLookup: widget.providerLookup,
-        onNotificationRead: () {
-          _fetchNotificationCount();
-          _fetchPendingRequestsCount();
-        },
-      ),
-    ).then((_) {
-      _fetchNotificationCount();
-      _fetchPendingRequestsCount();
-    });
   }
 
   Future<void> _checkProfileStatusAndPrompt() async {
