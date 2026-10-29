@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'theme/pawstay_theme.dart';
 import 'Screen/auth/splash_screen.dart';
+import 'widgets/no_network_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +38,7 @@ class MyApp extends StatelessWidget {
           themeMode: currentMode,
           builder: (context, child) {
             final mediaQuery = MediaQuery.of(context);
-            return MediaQuery(
+            final scaledChild = MediaQuery(
               data: mediaQuery.copyWith(
                 textScaler: mediaQuery.textScaler.clamp(
                   minScaleFactor: 0.85,
@@ -46,6 +47,9 @@ class MyApp extends StatelessWidget {
               ),
               child: child ?? const SizedBox.shrink(),
             );
+            // Wrap with ConnectivityWrapper so the offline screen shows
+            // automatically whenever the device loses internet access.
+            return ConnectivityWrapper(child: scaledChild);
           },
           home: const SplashScreen(),
         );

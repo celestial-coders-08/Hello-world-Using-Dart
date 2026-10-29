@@ -20,7 +20,7 @@ class ApiConfig {
   /// ──────────────────────────────────────────────────────────────────────────
   static const String deviceIp = String.fromEnvironment(
     'PAWSTAY_API_HOST',
-    defaultValue: '192.168.1.101',
+    defaultValue: '192.168.137.236',
   );
   static const String androidHost = deviceIp;
 
